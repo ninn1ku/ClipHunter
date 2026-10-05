@@ -59,7 +59,7 @@ health_check() {
 
 if [[ "${1:-}" == "--rollback" ]]; then
     previous=$(cat "$APP/shared/previous_release" 2>/dev/null || true)
-    [[ -n "$previous" && -d "$previous" ]] || die "no previous release recorded"
+    [[ "$previous" == "$APP"/releases/* && -d "$previous" ]] || die "no previous release recorded"
     log "Rolling back to $(basename "$previous")"
     echo "$(readlink -f "$APP/current")" > "$APP/shared/previous_release"
     switch_to "$previous"
@@ -78,7 +78,10 @@ git --git-dir="$APP/repo.git" fetch --quiet --prune origin '+refs/heads/*:refs/h
 SHA=$(git --git-dir="$APP/repo.git" rev-parse --verify "$REF^{commit}")
 SHORT=${SHA:0:12}
 RELEASE="$APP/releases/$SHA"
-CURRENT=$(readlink -f "$APP/current" 2>/dev/null || true)
+# Only a real release directory counts (readlink -f returns the path itself when the link is
+# missing, which on a first deploy would make "current" point at itself on rollback).
+CURRENT=$(readlink -e "$APP/current" 2>/dev/null || true)
+[[ "$CURRENT" == "$APP"/releases/* && -d "$CURRENT" ]] || CURRENT=""
 [[ "$CURRENT" != "$RELEASE" ]] || die "$SHORT is already live"
 
 log "Building release $SHORT"
