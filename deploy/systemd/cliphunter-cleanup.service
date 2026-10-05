@@ -1,0 +1,19 @@
+[Unit]
+Description=ClipHunter storage cleanup (retention policy)
+
+[Service]
+Type=oneshot
+User=cliphunter
+Group=cliphunter
+WorkingDirectory=/var/www/cliphunter/current
+ExecStart=/usr/bin/php8.4 /var/www/cliphunter/current/bin/cleanup.php
+UMask=0027
+Nice=15
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/www/cliphunter/shared/storage
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=

@@ -1,0 +1,52 @@
+[Unit]
+Description=ClipHunter download worker %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cliphunter
+Group=cliphunter
+WorkingDirectory=/var/www/cliphunter/current
+ExecStart=/usr/bin/php8.4 /var/www/cliphunter/current/bin/worker.php %i
+Restart=always
+RestartSec=3
+# SIGTERM: the worker kills yt-dlp and requeues its job.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+UMask=0027
+
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/var/www/cliphunter/shared/storage/cache
+Environment=DENO_DIR=/var/www/cliphunter/shared/storage/cache/deno
+
+# Resource limits (1 vCPU / 1 GB server)
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=90%
+MemoryMax=600M
+TasksMax=64
+LimitNOFILE=4096
+
+# Sandboxing: read-only system and code, writable storage only.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/www/cliphunter/shared/storage
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

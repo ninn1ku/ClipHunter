@@ -1,0 +1,41 @@
+#!/usr/sbin/nft -f
+# ClipHunter firewall. NOT applied automatically: changing firewall rules requires the owner's
+# explicit confirmation (CLAUDE.md §44). Apply with deploy/bin/apply-firewall.sh, which rolls back
+# automatically unless SSH access is confirmed within 120 seconds.
+
+table inet cliphunter
+delete table inet cliphunter
+
+table inet cliphunter {
+    set blocked_v4 {
+        type ipv4_addr; flags interval
+        elements = { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12,
+                     192.0.0.0/24, 192.168.0.0/16, 198.18.0.0/15, 224.0.0.0/4, 240.0.0.0/4 }
+    }
+    set blocked_v6 {
+        type ipv6_addr; flags interval
+        elements = { ::1/128, fc00::/7, fe80::/10, ff00::/8, ::ffff:0:0/96 }
+    }
+
+    chain input {
+        type filter hook input priority filter; policy drop;
+        ct state established,related accept
+        ct state invalid drop
+        iif "lo" accept
+        meta l4proto { icmp, ipv6-icmp } accept
+        tcp dport 22 accept
+        tcp dport { 80, 443 } accept
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+        # SSRF defence in depth: the app user may only talk to the public internet
+        # (DNS to the local resolver is allowed via loopback for systemd-resolved setups).
+        meta skuid "cliphunter" oif "lo" accept
+        # The provider's resolver may live on a private address: allow DNS only.
+        meta skuid "cliphunter" udp dport 53 accept
+        meta skuid "cliphunter" tcp dport 53 accept
+        meta skuid "cliphunter" ip daddr @blocked_v4 reject
+        meta skuid "cliphunter" ip6 daddr @blocked_v6 reject
+    }
+}

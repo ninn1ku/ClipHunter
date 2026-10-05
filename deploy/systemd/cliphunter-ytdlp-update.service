@@ -1,0 +1,9 @@
+[Unit]
+Description=Update yt-dlp (with smoke test and automatic rollback)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/var/www/cliphunter/current/deploy/bin/update-ytdlp.sh
+Nice=10
