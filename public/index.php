@@ -15,6 +15,13 @@ use Nyholm\Psr7Server\ServerRequestCreator;
 
 if (PHP_SAPI === 'cli-server') {
     $path = parse_url(is_string($_SERVER['REQUEST_URI'] ?? null) ? $_SERVER['REQUEST_URI'] : '/', PHP_URL_PATH);
+    if ($path === '/') {
+        // The built-in server would pick index.php for "/"; Nginx uses index.html in production.
+        header('Content-Type: text/html; charset=utf-8');
+        readfile(__DIR__ . '/index.html');
+
+        return;
+    }
     if (is_string($path) && !str_starts_with($path, '/api/')) {
         return false;
     }
