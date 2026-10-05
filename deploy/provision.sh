@@ -135,7 +135,8 @@ log "systemd units and logrotate"
 install -m 644 "$SRC"/systemd/cliphunter-* /etc/systemd/system/
 install -m 644 "$SRC/logrotate/cliphunter" /etc/logrotate.d/cliphunter
 systemctl daemon-reload
-systemctl enable cliphunter-cleanup.timer cliphunter-ytdlp-update.timer cliphunter-worker@1.service
+systemctl enable --now cliphunter-cleanup.timer cliphunter-ytdlp-update.timer
+systemctl enable cliphunter-worker@1.service  # started by deploy.sh once a release exists
 
 log "Automatic security updates"
 echo 'APT::Periodic::Update-Package-Lists "1"; APT::Periodic::Unattended-Upgrade "1";' > /etc/apt/apt.conf.d/20auto-upgrades
