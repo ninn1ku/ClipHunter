@@ -1,0 +1,39 @@
+# Dependencies
+/vendor/
+
+# Environment and secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Runtime storage: keep the directory skeleton only
+/storage/**
+!/storage/**/
+!/storage/**/.gitkeep
+
+# Downloaded / generated media anywhere in the tree
+*.mp4
+*.m4a
+*.mp3
+*.webm
+*.mkv
+*.part
+*.ytdl
+
+# Tool caches
+/.phpunit.cache/
+/.php-cs-fixer.cache
+/var/
+/coverage/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp

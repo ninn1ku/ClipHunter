@@ -1,0 +1,15 @@
+# Production is Linux: normalise all text files to LF.
+* text=auto eol=lf
+
+*.png  binary
+*.jpg  binary
+*.woff2 binary
+*.ico  binary
+*.bat  text eol=crlf
+
+# Keep dev-only files out of `git archive` exports.
+/tests            export-ignore
+/.github          export-ignore
+/phpunit.xml      export-ignore
+/phpstan.neon     export-ignore
+/.php-cs-fixer.php export-ignore
