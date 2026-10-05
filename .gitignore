@@ -23,6 +23,8 @@ id_ed25519*
 *.mkv
 *.part
 *.ytdl
+# ...except the tiny synthetic test fixtures
+!/tests/fixtures/media/sample.*
 
 # Tool caches
 /.phpunit.cache/

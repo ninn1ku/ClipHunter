@@ -15,6 +15,11 @@ final readonly class AppConfig
     public const ENV_DEVELOPMENT = 'development';
     public const ENV_TESTING = 'testing';
 
+    /** Nginx streams files via X-Accel-Redirect (production). */
+    public const FILE_DELIVERY_XACCEL = 'xaccel';
+    /** PHP streams files itself (development without Nginx). */
+    public const FILE_DELIVERY_PHP = 'php';
+
     private const MB = 1024 * 1024;
 
     /** Used only outside production when APP_SECRET is empty. */
@@ -47,6 +52,7 @@ final readonly class AppConfig
         public int $analysisTtlSec,
         public int $jobTtlSec,
         public Level $logLevel,
+        public string $fileDelivery,
     ) {
     }
 
@@ -93,7 +99,7 @@ final readonly class AppConfig
             maxVideoDurationSec: $reader->int('MAX_VIDEO_DURATION_SEC', 7200, 1, 86_400),
             maxVideoHeight: $reader->int('MAX_VIDEO_HEIGHT', 2160, 144, 4320),
             analyzeTimeoutSec: $reader->int('ANALYZE_TIMEOUT_SEC', 30, 5, 300),
-            downloadTimeoutSec: $reader->int('DOWNLOAD_TIMEOUT_SEC', 900, 30, 86_400),
+            downloadTimeoutSec: $reader->int('DOWNLOAD_TIMEOUT_SEC', 900, 5, 86_400),
             maxConcurrentAnalyze: $reader->int('MAX_CONCURRENT_ANALYZE', 2, 1, 64),
             maxConcurrentDownloads: $reader->int('MAX_CONCURRENT_DOWNLOADS', 1, 1, 64),
             maxQueueLength: $reader->int('MAX_QUEUE_LENGTH', 10, 1, 10_000),
@@ -112,6 +118,11 @@ final readonly class AppConfig
                 'error' => Level::Error,
                 default => Level::Info,
             },
+            fileDelivery: $reader->choice(
+                'FILE_DELIVERY',
+                [self::FILE_DELIVERY_XACCEL, self::FILE_DELIVERY_PHP],
+                $isProduction ? self::FILE_DELIVERY_XACCEL : self::FILE_DELIVERY_PHP,
+            ),
         );
     }
 

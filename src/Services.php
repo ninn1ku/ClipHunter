@@ -8,6 +8,9 @@ use ClipHunter\Analysis\AnalysisRepository;
 use ClipHunter\Analysis\AnalyzeService;
 use ClipHunter\Config\AppConfig;
 use ClipHunter\Http\Controller\AnalyzeController;
+use ClipHunter\Http\Controller\DownloadController;
+use ClipHunter\Http\Controller\DownloadFileController;
+use ClipHunter\Http\Controller\DownloadStatusController;
 use ClipHunter\Http\Controller\HealthController;
 use ClipHunter\Http\JsonResponder;
 use ClipHunter\Http\Middleware\AccessLogMiddleware;
@@ -18,7 +21,12 @@ use ClipHunter\Http\MiddlewarePipeline;
 use ClipHunter\Http\RequestContext;
 use ClipHunter\Http\Route;
 use ClipHunter\Http\Router;
+use ClipHunter\Job\DownloadService;
+use ClipHunter\Job\FilesystemJobRepository;
+use ClipHunter\Job\JobRepository;
+use ClipHunter\Job\JobRunner;
 use ClipHunter\Logging\LoggerFactory;
+use ClipHunter\Media\MediaProbe;
 use ClipHunter\Media\MetadataSanitizer;
 use ClipHunter\Media\OptionBuilder;
 use ClipHunter\Media\PlatformRegistry;
@@ -30,6 +38,9 @@ use ClipHunter\Security\DnsHostResolver;
 use ClipHunter\Security\HostResolver;
 use ClipHunter\Security\IpHasher;
 use ClipHunter\Security\UrlValidator;
+use ClipHunter\Storage\Cleaner;
+use ClipHunter\Storage\Filesystem;
+use ClipHunter\Storage\StorageGuard;
 use ClipHunter\Storage\StoragePaths;
 use ClipHunter\Support\Clock;
 use ClipHunter\Support\SystemClock;
@@ -103,6 +114,47 @@ final class Services
             $c->get(LoggerInterface::class),
         ));
 
+        // Downloads
+        $c->set(Filesystem::class, static fn (Container $c): Filesystem => new Filesystem($c->get(StoragePaths::class)->root));
+        $c->set(StorageGuard::class, static fn (Container $c): StorageGuard => new StorageGuard(
+            $c->get(StoragePaths::class),
+            $config->storageQuotaBytes,
+            $config->minFreeDiskBytes,
+        ));
+        $c->set(JobRepository::class, static fn (Container $c): JobRepository => new FilesystemJobRepository($c->get(StoragePaths::class)));
+        $c->set(MediaProbe::class, static fn (Container $c): MediaProbe => new MediaProbe([$config->ffprobePath], $c->get(ProcessRunner::class)));
+        $c->set(JobRunner::class, static fn (Container $c): JobRunner => new JobRunner(
+            $c->get(JobRepository::class),
+            $c->get(UrlValidator::class),
+            $c->get(YtDlpClient::class),
+            $c->get(MediaProbe::class),
+            $c->get(StoragePaths::class),
+            $c->get(StorageGuard::class),
+            $c->get(Filesystem::class),
+            $c->get(Clock::class),
+            $config,
+            $c->get(LoggerInterface::class),
+        ));
+        $c->set(DownloadService::class, static fn (Container $c): DownloadService => new DownloadService(
+            $c->get(JobRepository::class),
+            $c->get(AnalysisRepository::class),
+            $c->get(RateLimiter::class),
+            $c->get(StorageGuard::class),
+            $c->get(StoragePaths::class),
+            $c->get(Filesystem::class),
+            $c->get(Clock::class),
+            $config,
+            $c->get(LoggerInterface::class),
+        ));
+        $c->set(Cleaner::class, static fn (Container $c): Cleaner => new Cleaner(
+            $c->get(JobRepository::class),
+            $c->get(StoragePaths::class),
+            $c->get(Filesystem::class),
+            $c->get(Clock::class),
+            $config,
+            $c->get(LoggerInterface::class),
+        ));
+
         // HTTP
         $c->set(JsonResponder::class, static fn (Container $c): JsonResponder => new JsonResponder(
             $c->get(Psr17Factory::class),
@@ -130,6 +182,20 @@ final class Services
         $c->set(AnalyzeController::class, static fn (Container $c): AnalyzeController => new AnalyzeController(
             $c->get(AnalyzeService::class),
             $c->get(JsonResponder::class),
+        ));
+        $c->set(DownloadController::class, static fn (Container $c): DownloadController => new DownloadController(
+            $c->get(DownloadService::class),
+            $c->get(JsonResponder::class),
+        ));
+        $c->set(DownloadStatusController::class, static fn (Container $c): DownloadStatusController => new DownloadStatusController(
+            $c->get(DownloadService::class),
+            $c->get(JsonResponder::class),
+        ));
+        $c->set(DownloadFileController::class, static fn (Container $c): DownloadFileController => new DownloadFileController(
+            $c->get(DownloadService::class),
+            $c->get(Psr17Factory::class),
+            $c->get(Psr17Factory::class),
+            $config,
         ));
 
         return $c;

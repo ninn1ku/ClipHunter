@@ -29,8 +29,67 @@ $fail = static function (string $message): never {
 };
 
 if (!in_array('--dump-single-json', $args, true)) {
-    fwrite(STDERR, "fake-yt-dlp: download mode is not implemented for scenario $scenario\n");
-    exit(2);
+    download($args, $scenario, dirname(__DIR__) . '/fixtures/media', $fail);
+}
+
+/**
+ * Download mode: emits progress like `--progress-template download:CHPROGRESS %(progress)j`
+ * and writes media.<ext> into the --paths home: directory.
+ *
+ * @param list<string> $args
+ */
+function download(array $args, string $scenario, string $mediaDir, Closure $fail): never
+{
+    $home = null;
+    foreach ($args as $i => $arg) {
+        if ($arg === '--paths' && str_starts_with($args[$i + 1] ?? '', 'home:')) {
+            $home = substr($args[$i + 1], 5);
+        }
+    }
+    if ($home === null || !is_dir($home)) {
+        $fail('ERROR: fake-yt-dlp: --paths home: directory missing');
+    }
+    $audioFormat = ($i = array_search('--audio-format', $args, true)) !== false ? $args[$i + 1] : null;
+    $ext = in_array('-x', $args, true) ? (string) $audioFormat : 'mp4';
+    $target = $home . '/media.' . $ext;
+
+    $progress = static function (string $status, int $done, int $total, string $file): void {
+        echo 'CHPROGRESS ', json_encode(['status' => $status, 'downloaded_bytes' => $done, 'total_bytes' => $total, 'speed' => 250000.5, 'eta' => 1, 'filename' => $file]), "\n";
+        flush();
+    };
+
+    switch ($scenario) {
+        case 'dlfail':
+            $fail('ERROR: unable to download video data: HTTP Error 403: Forbidden');
+            // no break
+        case 'skip':
+            echo "[download] File is larger than max-filesize (2000000000 bytes > 1073741824 bytes). Skipping...\n";
+            exit(0);
+        case 'hang':
+            sleep(120);
+            exit(0);
+        case 'big':
+            file_put_contents($target, str_repeat("\0", 2 * 1024 * 1024));
+            exit(0);
+        case 'corrupt':
+            file_put_contents($target, 'definitely not a media file');
+            exit(0);
+    }
+
+    $steps = $scenario === 'slow' ? 60 : 3;
+    foreach ($ext === 'mp4' ? ['f133.mp4', 'f140.m4a'] : ['f140.m4a'] as $part) {
+        for ($s = 1; $s <= $steps; $s++) {
+            $progress('downloading', $s * 1000, $steps * 1000, $part);
+            if ($scenario === 'slow') {
+                usleep(100_000);
+            }
+        }
+        $progress('finished', $steps * 1000, $steps * 1000, $part);
+    }
+    echo $ext === 'mp4' ? "[Merger] Merging formats into \"$target\"\n" : "[ExtractAudio] Destination: $target\n";
+
+    copy($mediaDir . '/sample.' . $ext, $target);
+    exit(0);
 }
 
 switch ($scenario) {

@@ -41,21 +41,17 @@ final readonly class YtDlpClient
      */
     public function analyze(ValidatedUrl $url): MediaInfo
     {
-        $command = [
-            ...$this->binary,
+        $result = $this->run('analyze', $url, [
             ...$this->baseArgs($url),
             '--skip-download',
             '--dump-single-json',
             '--',
             $url->url,
-        ];
-
-        $result = $this->runner->run($command, new ProcessOptions(
+        ], new ProcessOptions(
             timeoutSec: $this->analyzeTimeoutSec,
             maxStdoutBytes: self::MAX_JSON_BYTES,
             niceLevel: self::ANALYZE_NICE,
         ));
-        $this->logExec('analyze', $url, $result);
 
         if ($result->reason === TerminationReason::Timeout) {
             throw new ApiException(ErrorCode::AnalyzeTimeout, 'yt-dlp analyze timeout');
@@ -101,13 +97,24 @@ final readonly class YtDlpClient
     }
 
     /**
-     * @param list<string> $args
+     * Runs yt-dlp with the given arguments (the caller ends them with "--", URL) and logs the execution.
      *
-     * @return non-empty-list<string>
+     * @param list<string> $args
      */
-    public function command(array $args): array
+    public function run(string $operation, ValidatedUrl $url, array $args, ProcessOptions $options): ProcessResult
     {
-        return [...$this->binary, ...$args];
+        $result = $this->runner->run([...$this->binary, ...$args], $options);
+        $this->logger->info('process.exec', [
+            'binary' => 'yt-dlp',
+            'operation' => $operation,
+            'platform' => $url->platform->key,
+            'url_hash' => $url->hash(),
+            'exit_code' => $result->exitCode,
+            'reason' => $result->reason->value,
+            'duration_ms' => $result->durationMs,
+        ]);
+
+        return $result;
     }
 
     public function failure(ProcessResult $result, ErrorCode $fallback): ApiException
@@ -132,18 +139,5 @@ final readonly class YtDlpClient
     public static function redact(string $stderr): string
     {
         return (string) preg_replace('~https?://[^\s\'"]+~i', '<url>', $stderr);
-    }
-
-    public function logExec(string $operation, ValidatedUrl $url, ProcessResult $result): void
-    {
-        $this->logger->info('process.exec', [
-            'binary' => 'yt-dlp',
-            'operation' => $operation,
-            'platform' => $url->platform->key,
-            'url_hash' => $url->hash(),
-            'exit_code' => $result->exitCode,
-            'reason' => $result->reason->value,
-            'duration_ms' => $result->durationMs,
-        ]);
     }
 }

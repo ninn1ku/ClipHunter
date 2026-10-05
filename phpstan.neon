@@ -6,6 +6,7 @@ parameters:
     level: max
     paths:
         - src
+        - bin
         - public/index.php
         - tests
     excludePaths:
