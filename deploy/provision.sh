@@ -124,7 +124,8 @@ if [[ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
     if [[ -n "$LE_EMAIL" ]]; then account=(--email "$LE_EMAIL" --no-eff-email); else account=(--register-unsafely-without-email); fi
     certbot certonly --webroot -w /var/www/certbot -d "$DOMAIN" "${account[@]}" --agree-tos --non-interactive
     sed -e "s#__DOMAIN__#$DOMAIN#g" -e "s#__APP__#$APP#g" "$SRC/nginx/cliphunter.conf" > /etc/nginx/sites-available/cliphunter.conf
-    nginx -t && systemctl reload nginx
+    nginx -t
+    systemctl reload nginx
 fi
 mkdir -p /etc/letsencrypt/renewal-hooks/deploy
 printf '#!/bin/sh\nsystemctl reload nginx\n' > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
