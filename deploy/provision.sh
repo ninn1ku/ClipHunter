@@ -121,8 +121,8 @@ systemctl reload nginx
 
 log "TLS certificate (Let's Encrypt, HTTP-01 webroot)"
 if [[ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
-    certbot certonly --webroot -w /var/www/certbot -d "$DOMAIN" --email "$LE_EMAIL" \
-        --agree-tos --no-eff-email --non-interactive
+    if [[ -n "$LE_EMAIL" ]]; then account=(--email "$LE_EMAIL" --no-eff-email); else account=(--register-unsafely-without-email); fi
+    certbot certonly --webroot -w /var/www/certbot -d "$DOMAIN" "${account[@]}" --agree-tos --non-interactive
     sed -e "s#__DOMAIN__#$DOMAIN#g" -e "s#__APP__#$APP#g" "$SRC/nginx/cliphunter.conf" > /etc/nginx/sites-available/cliphunter.conf
     nginx -t && systemctl reload nginx
 fi
