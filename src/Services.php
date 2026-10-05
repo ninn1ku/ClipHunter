@@ -15,7 +15,11 @@ use ClipHunter\Http\RequestContext;
 use ClipHunter\Http\Route;
 use ClipHunter\Http\Router;
 use ClipHunter\Logging\LoggerFactory;
+use ClipHunter\Media\PlatformRegistry;
+use ClipHunter\Security\DnsHostResolver;
+use ClipHunter\Security\HostResolver;
 use ClipHunter\Security\IpHasher;
+use ClipHunter\Security\UrlValidator;
 use Monolog\Logger;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Http\Server\RequestHandlerInterface;
@@ -36,6 +40,14 @@ final class Services
         $c->set(IpHasher::class, static fn (): IpHasher => new IpHasher($config->appSecret));
 
         $c->set(LoggerInterface::class, static fn (Container $c): Logger => LoggerFactory::create($config, $c->get(RequestContext::class)));
+
+        // Security
+        $c->set(PlatformRegistry::class, static fn (): PlatformRegistry => PlatformRegistry::fromFile($config->projectRoot . '/config/platforms.php'));
+        $c->set(HostResolver::class, static fn (): HostResolver => new DnsHostResolver());
+        $c->set(UrlValidator::class, static fn (Container $c): UrlValidator => new UrlValidator(
+            $c->get(PlatformRegistry::class),
+            $c->get(HostResolver::class),
+        ));
 
         $c->set(JsonResponder::class, static fn (Container $c): JsonResponder => new JsonResponder(
             $c->get(Psr17Factory::class),
