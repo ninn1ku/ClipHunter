@@ -9,7 +9,13 @@ use ClipHunter\Container;
 use ClipHunter\Http\RequestContext;
 use ClipHunter\Kernel;
 use ClipHunter\Logging\LoggerFactory;
+use ClipHunter\Media\MetadataSanitizer;
+use ClipHunter\Media\YtDlpClient;
+use ClipHunter\Process\ProcessRunner;
+use ClipHunter\Security\HostResolver;
 use ClipHunter\Services;
+use ClipHunter\Storage\StoragePaths;
+use ClipHunter\Support\Clock;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -18,13 +24,18 @@ use Psr\Log\LoggerInterface;
 use RuntimeException;
 
 /**
- * A fully wired application with isolated temp storage and an in-memory log.
+ * A fully wired application with isolated temp storage, an in-memory log, a frozen clock,
+ * fake DNS and the fake yt-dlp binary (tests/bin/fake-yt-dlp.php).
  */
 final class TestApp
 {
+    public const APP_URL = 'https://cliphunter.test';
+
     public readonly Container $container;
     public readonly TestHandler $logs;
     public readonly AppConfig $config;
+    public readonly FrozenClock $clock;
+    public readonly FakeResolver $resolver;
     private readonly Psr17Factory $factory;
 
     /**
@@ -35,17 +46,42 @@ final class TestApp
         $storage = TempDir::create('cliphunter-test-');
 
         $this->config = AppConfig::fromEnvironment(
-            array_merge(['APP_ENV' => 'testing', 'STORAGE_PATH' => $storage, 'LOG_LEVEL' => 'debug'], $env),
+            array_merge(['APP_ENV' => 'testing', 'APP_URL' => self::APP_URL, 'STORAGE_PATH' => $storage, 'LOG_LEVEL' => 'debug'], $env),
             dirname(__DIR__, 2),
         );
         $this->container = Services::build($this->config);
         $this->logs = new TestHandler();
+        $this->clock = new FrozenClock();
+        $this->resolver = new FakeResolver();
+
         $logs = $this->logs;
+        $clock = $this->clock;
+        $resolver = $this->resolver;
+        $config = $this->config;
+
         $this->container->set(
             LoggerInterface::class,
-            static fn (Container $c): Logger => LoggerFactory::create($c->get(AppConfig::class), $c->get(RequestContext::class), 'app', [$logs]),
+            static fn (Container $c): Logger => LoggerFactory::create($config, $c->get(RequestContext::class), 'app', [$logs]),
         );
+        $this->container->set(Clock::class, static fn (): Clock => $clock);
+        $this->container->set(HostResolver::class, static fn (): HostResolver => $resolver);
+        $this->container->set(YtDlpClient::class, static fn (Container $c): YtDlpClient => new YtDlpClient(
+            self::fakeYtDlp(),
+            $c->get(ProcessRunner::class),
+            new MetadataSanitizer($config->maxVideoDurationSec),
+            $c->get(LoggerInterface::class),
+            $c->get(StoragePaths::class)->dir('cache/yt-dlp'),
+            $config->analyzeTimeoutSec,
+        ));
         $this->factory = new Psr17Factory();
+    }
+
+    /**
+     * @return non-empty-list<string>
+     */
+    public static function fakeYtDlp(): array
+    {
+        return [PHP_BINARY, dirname(__DIR__) . '/bin/fake-yt-dlp.php'];
     }
 
     /**
@@ -69,6 +105,16 @@ final class TestApp
     }
 
     /**
+     * POST /api/analyze as a same-origin browser would send it.
+     *
+     * @param array<string, string> $server
+     */
+    public function analyze(string $url, array $server = []): ResponseInterface
+    {
+        return $this->request('POST', '/api/analyze', ['url' => $url], ['Origin' => self::APP_URL, 'Sec-Fetch-Site' => 'same-origin'], $server);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public static function decode(ResponseInterface $response): array
@@ -80,5 +126,13 @@ final class TestApp
 
         /** @var array<string, mixed> $data */
         return $data;
+    }
+
+    public static function errorCode(ResponseInterface $response): ?string
+    {
+        $error = self::decode($response)['error'] ?? null;
+        $code = is_array($error) ? ($error['code'] ?? null) : null;
+
+        return is_string($code) ? $code : null;
     }
 }

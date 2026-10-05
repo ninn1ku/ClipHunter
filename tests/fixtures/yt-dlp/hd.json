@@ -1,0 +1,25 @@
+{
+    "id": "hd000000001",
+    "title": "Synthetic HD video",
+    "uploader": "ClipHunter Tests",
+    "duration": 600,
+    "thumbnail": "https://i.ytimg.com/vi/hd000000001/maxresdefault.jpg",
+    "webpage_url": "https://www.youtube.com/watch?v=hd000000001",
+    "extractor": "youtube",
+    "extractor_key": "Youtube",
+    "is_live": false,
+    "live_status": "not_live",
+    "_type": "video",
+    "formats": [
+        {"format_id": "140", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "filesize": 9700000},
+        {"format_id": "251", "ext": "webm", "vcodec": "none", "acodec": "opus", "filesize": 9100000},
+        {"format_id": "18", "ext": "mp4", "vcodec": "avc1.42001E", "acodec": "mp4a.40.2", "width": 640, "height": 360, "filesize_approx": 30000000},
+        {"format_id": "135", "ext": "mp4", "vcodec": "avc1.4d401f", "acodec": "none", "width": 854, "height": 480, "filesize": 25000000},
+        {"format_id": "136", "ext": "mp4", "vcodec": "avc1.4d401f", "acodec": "none", "width": 1280, "height": 720, "filesize": 50000000},
+        {"format_id": "247", "ext": "webm", "vcodec": "vp9", "acodec": "none", "width": 1280, "height": 720, "filesize": 60000000},
+        {"format_id": "137", "ext": "mp4", "vcodec": "avc1.640028", "acodec": "none", "width": 1920, "height": 1080, "filesize": 120000000},
+        {"format_id": "271", "ext": "webm", "vcodec": "vp9", "acodec": "none", "width": 2560, "height": 1440, "filesize": 400000000},
+        {"format_id": "313", "ext": "webm", "vcodec": "vp9", "acodec": "none", "width": 3840, "height": 2160, "filesize": 2000000000},
+        {"format_id": "hls-1080", "ext": "mp4", "vcodec": "avc1.640028", "acodec": "none", "width": 1920, "height": 1080, "protocol": "m3u8_native"}
+    ]
+}

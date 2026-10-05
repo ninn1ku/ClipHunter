@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ClipHunter\Http;
 
+use ClipHunter\Http\Controller\AnalyzeController;
 use ClipHunter\Http\Controller\HealthController;
 use Psr\Http\Server\RequestHandlerInterface;
 
@@ -28,6 +29,7 @@ final readonly class Route
     {
         return [
             new self('GET', '/api/health', HealthController::class),
+            new self('POST', '/api/analyze', AnalyzeController::class),
         ];
     }
 }

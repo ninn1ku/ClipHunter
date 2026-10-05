@@ -31,6 +31,7 @@ final readonly class JsonResponder
         $response = $this->responses->createResponse($status)
             ->withHeader('Content-Type', 'application/json; charset=utf-8')
             ->withHeader('Cache-Control', 'no-store')
+            ->withHeader('X-Content-Type-Options', 'nosniff')
             ->withBody($this->streams->createStream(json_encode($data, self::FLAGS)));
 
         foreach ($headers as $name => $value) {
