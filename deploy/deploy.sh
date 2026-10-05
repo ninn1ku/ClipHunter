@@ -101,6 +101,8 @@ find "$RELEASE" -type f -exec chmod 640 {} +
 chmod 750 "$RELEASE"/deploy/*.sh "$RELEASE"/deploy/bin/*.sh
 
 log "Smoke test (as cliphunter)"
+# runuser keeps the caller's cwd (e.g. /root), which the app user cannot enter.
+cd "$RELEASE"
 runuser -u cliphunter -- env PATH=/usr/local/bin:/usr/bin:/bin "$PHP" "$RELEASE/bin/smoke.php" \
     || { rm -rf "$RELEASE"; die "smoke test failed; nothing was switched"; }
 

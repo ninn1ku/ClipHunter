@@ -13,6 +13,7 @@ if [[ "$old" == "$new" ]]; then
     exit 0
 fi
 
+cd "$APP/current"
 if runuser -u cliphunter -- env PATH=/usr/local/bin:/usr/bin:/bin \
         HOME="$APP/shared/storage/cache" DENO_DIR="$APP/shared/storage/cache/deno" \
         php8.4 "$APP/current/bin/smoke.php" --network >/dev/null; then
