@@ -14,10 +14,13 @@ final class ResponseEmitter
     public static function emit(ResponseInterface $response): void
     {
         if (!headers_sent()) {
-            http_response_code($response->getStatusCode());
+            $status = $response->getStatusCode();
+            http_response_code($status);
             foreach ($response->getHeaders() as $name => $values) {
                 foreach ($values as $i => $value) {
-                    header($name . ': ' . $value, $i === 0);
+                    // Pass the status every time: PHP silently turns any response carrying a
+                    // Location header into a 302 unless told otherwise (e.g. our 202 Accepted).
+                    header($name . ': ' . $value, $i === 0, $status);
                 }
             }
         }
