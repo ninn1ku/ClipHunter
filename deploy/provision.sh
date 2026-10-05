@@ -73,7 +73,7 @@ if [[ ! -x /opt/yt-dlp/venv/bin/yt-dlp ]]; then
     python3 -m venv /opt/yt-dlp/venv
 fi
 /opt/yt-dlp/venv/bin/pip install -q -U pip
-/opt/yt-dlp/venv/bin/pip install -q -U "yt-dlp[default]"
+/opt/yt-dlp/venv/bin/pip install -q -U "yt-dlp[default,curl-cffi]"
 
 log "System user and directories"
 id cliphunter >/dev/null 2>&1 || useradd --system --home-dir "$APP" --no-create-home --shell /usr/sbin/nologin cliphunter

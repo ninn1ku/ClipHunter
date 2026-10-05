@@ -20,9 +20,9 @@ final class YtDlpErrorClassifier
         [ErrorCode::FileTooLarge, '~larger than max-filesize|File is larger than~i'],
         [ErrorCode::VideoPrivate, '~private video|this video is private|is private\b~i'],
         [ErrorCode::LiveNotSupported, '~is_live|live event will begin|premieres in|this live (event|stream)|is a live stream|currently live~i'],
-        [ErrorCode::GeoRestricted, '~not (made this video )?available in your (country|location)|geo.?restrict|from your location|blocked it in your country~i'],
+        [ErrorCode::GeoRestricted, '~ip address is blocked|not (made this video )?available in your (country|location)|geo.?restrict|from your location|blocked it in your country~i'],
         [ErrorCode::LoginRequired, '~sign in to confirm your age|age.?restricted|login required|requires? (authentication|login)|log ?in to|--cookies|members.?only|only available (to|for) (registered|logged)|this content isn.t available~i'],
-        [ErrorCode::VideoUnavailable, '~video (is )?(currently )?unavailable|has been removed|does not exist|no longer available|account .{0,40}terminated|HTTP Error 404|not found|DRM|unable to download webpage: HTTP Error 410~i'],
+        [ErrorCode::VideoUnavailable, '~video (is )?(currently )?unavailable|no video could be found|has been removed|does not exist|no longer available|account .{0,40}terminated|HTTP Error 404|not found|DRM|unable to download webpage: HTTP Error 410~i'],
         [ErrorCode::UnsupportedSource, '~unsupported url|no suitable extractor~i'],
         [ErrorCode::NoFormats, '~requested format is not available|no video formats found~i'],
     ];

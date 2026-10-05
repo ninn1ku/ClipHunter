@@ -6,7 +6,7 @@ VENV=/opt/yt-dlp/venv
 APP=/var/www/cliphunter
 
 old=$("$VENV/bin/yt-dlp" --version)
-"$VENV/bin/pip" install -q -U "yt-dlp[default]"
+"$VENV/bin/pip" install -q -U "yt-dlp[default,curl-cffi]"
 new=$("$VENV/bin/yt-dlp" --version)
 
 if [[ "$old" == "$new" ]]; then
@@ -20,7 +20,7 @@ if runuser -u cliphunter -- env PATH=/usr/local/bin:/usr/bin:/bin \
     logger -t cliphunter "yt-dlp updated $old -> $new"
     systemctl restart 'cliphunter-worker@*.service' || true
 else
-    "$VENV/bin/pip" install -q "yt-dlp[default]==$old"
+    "$VENV/bin/pip" install -q "yt-dlp[default,curl-cffi]==$old"
     logger -t cliphunter "yt-dlp $new failed the smoke test; rolled back to $old"
     exit 1
 fi

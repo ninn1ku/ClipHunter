@@ -70,6 +70,8 @@ final class RateLimitTest extends TestCase
         self::assertSame(ErrorCode::SourceTemporarilyBlocked, YtDlpErrorClassifier::classify("WARNING: private video mention\nERROR: [youtube] x: Sign in to confirm you're not a bot", ErrorCode::ExtractorFailed));
         self::assertSame(ErrorCode::FileTooLarge, YtDlpErrorClassifier::classify('ERROR: File is larger than max-filesize (1.00GiB > 1.00GiB)', ErrorCode::DownloadFailed));
         self::assertSame(ErrorCode::VideoUnavailable, YtDlpErrorClassifier::classify('ERROR: [youtube] xxxxxxxxxxx: This video is unavailable', ErrorCode::ExtractorFailed));
+        self::assertSame(ErrorCode::VideoUnavailable, YtDlpErrorClassifier::classify('ERROR: [twitter] 1: No video could be found in this tweet', ErrorCode::ExtractorFailed));
+        self::assertSame(ErrorCode::GeoRestricted, YtDlpErrorClassifier::classify('ERROR: [TikTok] 1: Your IP address is blocked from accessing this post', ErrorCode::ExtractorFailed));
         self::assertSame(ErrorCode::ExtractorFailed, YtDlpErrorClassifier::classify('ERROR: weird', ErrorCode::ExtractorFailed));
         self::assertSame('ERROR: No suitable extractor found for URL <url>', YtDlpClient::redact('ERROR: No suitable extractor found for URL https://www.youtube.com/@x?a=1'));
         self::assertSame(ErrorCode::DownloadFailed, YtDlpErrorClassifier::classify('', ErrorCode::DownloadFailed));
