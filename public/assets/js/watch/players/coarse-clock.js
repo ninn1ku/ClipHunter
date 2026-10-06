@@ -4,6 +4,11 @@
 // The reported value changes at the moment the real position crosses a step, so that moment is
 // a precise anchor: from it the position advances with wall-clock time. The estimate never runs
 // more than one step ahead of the last report (the player may have stalled without telling).
+// After a seek, reports of the old position (the player's state lags behind) are ignored until
+// the player reaches the target or SEEK_SETTLE_MS pass.
+
+/** How long reports far from a seek target are taken for stale state. */
+export const SEEK_SETTLE_MS = 3000;
 
 export class CoarseClock {
   /** @param {number} [stepSec] the resolution of the reported position */
@@ -13,6 +18,8 @@ export class CoarseClock {
     this.anchorSec = 0;
     this.anchorAt = 0;
     this.running = false;
+    /** @type {{target: number, until: number}|null} a seek whose arrival is awaited */
+    this.pending = null;
   }
 
   /**
@@ -23,6 +30,12 @@ export class CoarseClock {
   report(reported, nowMs) {
     if (!Number.isFinite(reported)) {
       return;
+    }
+    if (this.pending !== null) {
+      if (nowMs < this.pending.until && Math.abs(reported - this.pending.target) > this.step) {
+        return; // still the position from before the seek
+      }
+      this.pending = null;
     }
     const estimate = this.value(nowMs);
     const changed = reported !== this.reported;
@@ -57,6 +70,7 @@ export class CoarseClock {
     this.anchorSec = seconds;
     this.anchorAt = nowMs;
     this.reported = Math.floor(seconds / this.step) * this.step;
+    this.pending = { target: seconds, until: nowMs + SEEK_SETTLE_MS };
   }
 
   /** @param {number} nowMs */

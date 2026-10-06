@@ -9,29 +9,16 @@
 //   sync would see a stale position as drift and keep seeking.
 // - A live channel (channel:<login>) has one position for everyone: only play/pause are shared.
 // - Clips have no JavaScript API at all; they are prepared as files instead (see TwitchRef.php).
-// - Ads: Twitch plays ads in the same player and tells the API nothing about them. An ad shows
-//   up as a SEEK we did not ask for to the ad's own time (≈ 1 s), sometimes preceded by a PAUSE,
-//   then PLAY; the player's time then runs on the ad or stands still. So a PAUSE followed at once
-//   by a SEEK is not a member's pause, an unrequested SEEK to the first seconds while the
-//   recording was well past them starts an ad, and the ad is over when the recording continues
-//   from where it stopped (or after AD_MAX_MS). During an ad the adapter keeps reporting the
-//   recording's time, isInAd() is true, and sync neither corrects nor relays its events.
+// - Twitch reports a seek as PAUSE, SEEK, PLAY. A PAUSE followed at once by a SEEK is therefore
+//   not a member's pause: it is held briefly and dropped when the SEEK comes.
 
 import { EMBED_PLAYER } from '../playback.js';
 import { CoarseClock } from './coarse-clock.js';
 
 const API_URL = 'https://player.twitch.tv/js/embed/v1.js';
 const READY_TIMEOUT_MS = 30000;
-/** A PAUSE followed by a SEEK this soon is the start of an ad or a seek, not a pause. */
+/** A PAUSE followed by a SEEK this soon belongs to the seek, not to a member's pause. */
 const PAUSE_HOLD_MS = 500;
-/** An unrequested SEEK below this, while the recording was well past it, is an ad starting. */
-const AD_START_MAX_SEC = 3;
-/** Our own seeks are recognised by their target for this long. */
-const OWN_SEEK_MS = 3000;
-/** Positions this close count as the same place. */
-const SAME_PLACE_SEC = 2;
-/** Safety net: an ad break is never assumed to last longer. */
-const AD_MAX_MS = 180_000;
 
 let apiPromise = null;
 
@@ -89,13 +76,7 @@ export class TwitchPlayerAdapter {
     this.live = false;
     // Twitch's isPaused() is false before the first start, so the state comes from its events.
     this.playing = false;
-    this.inAd = false;
-    /** The recording's time when the ad started: the ad is over once it moves. */
-    this.adAt = 0;
-    this.adStartedAt = 0;
     this.pauseTimer = null;
-    /** @type {{target: number, at: number}|null} */
-    this.ownSeek = null;
     this.clock = new CoarseClock(1);
     /** @type {Map<string, Set<Function>>} */
     this.listeners = new Map();
@@ -169,9 +150,7 @@ export class TwitchPlayerAdapter {
       clearTimeout(this.pauseTimer);
       this.pauseTimer = setTimeout(() => {
         this.pauseTimer = null;
-        if (!this.inAd) {
-          this.emit('pause');
-        }
+        this.emit('pause');
       }, PAUSE_HOLD_MS);
     });
     player.addEventListener(P.SEEK, (event) => this.seekEvent(Number(event?.position)));
@@ -186,52 +165,13 @@ export class TwitchPlayerAdapter {
 
   /** @param {number} position the SEEK event's position */
   seekEvent(position) {
-    // A pause right before a seek belongs to the seek (or to an ad), not to a member.
+    // A pause right before a seek belongs to the seek, not to a member.
     clearTimeout(this.pauseTimer);
     this.pauseTimer = null;
-    const now = performance.now();
-    if (!Number.isFinite(position)) {
-      return;
+    if (Number.isFinite(position)) {
+      this.clock.seek(position, performance.now());
+      this.emit('seeked');
     }
-    const own = this.ownSeek !== null && now - this.ownSeek.at < OWN_SEEK_MS &&
-      Math.abs(this.ownSeek.target - position) <= SAME_PLACE_SEC;
-    if (this.inAd) {
-      if (Math.abs(position - this.adAt) <= SAME_PLACE_SEC || own) {
-        this.endAd(); // back to the recording
-        this.clock.seek(position, now);
-      }
-      return; // a seek inside the ad break
-    }
-    const recording = this.clock.value(now);
-    if (!own && position < AD_START_MAX_SEC && recording > position + 10) {
-      this.startAd(recording);
-      return;
-    }
-    this.clock.seek(position, now);
-    this.emit('seeked');
-  }
-
-  startAd(recordingTime) {
-    this.inAd = true;
-    this.adAt = recordingTime;
-    this.adStartedAt = performance.now();
-    this.clock.seek(recordingTime, this.adStartedAt);
-    this.clock.setRunning(false, this.adStartedAt);
-    this.emit('ad', { active: true });
-    this.emit('buffering');
-  }
-
-  endAd() {
-    this.inAd = false;
-    this.emit('ad', { active: false });
-    if (this.playing) {
-      this.emit('playing');
-    }
-  }
-
-  /** While an ad plays, the recording waits: sync neither corrects nor relays events. */
-  isInAd() {
-    return this.inAd;
   }
 
   play() {
@@ -246,7 +186,6 @@ export class TwitchPlayerAdapter {
   seek(seconds) {
     if (!this.live) {
       const target = Math.max(0, seconds);
-      this.ownSeek = { target, at: performance.now() };
       this.player?.seek(target);
       this.clock.seek(target, performance.now());
     }
@@ -261,17 +200,8 @@ export class TwitchPlayerAdapter {
       return this.rawTime();
     }
     const now = performance.now();
-    const raw = this.rawTime();
-    if (this.inAd) {
-      // Over when the recording continues from where it stopped; the ad's own time is ignored.
-      const resumed = raw > this.adAt + 0.3 && raw - this.adAt <= SAME_PLACE_SEC;
-      if (!resumed && now - this.adStartedAt < AD_MAX_MS) {
-        return this.adAt;
-      }
-      this.endAd();
-    }
-    this.clock.report(raw, now);
-    this.clock.setRunning(this.isPlaying() && !this.inAd, now);
+    this.clock.report(this.rawTime(), now);
+    this.clock.setRunning(this.isPlaying(), now);
     return this.clock.value(now);
   }
 

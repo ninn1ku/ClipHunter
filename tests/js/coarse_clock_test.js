@@ -45,3 +45,18 @@ Deno.test('own seeks are trusted until the player reports, jumps re-anchor', () 
   clock.report(Number.NaN, 1500);
   close(clock.value(1500), 300.1, 'garbage ignored');
 });
+
+Deno.test('after a seek, reports of the old position are stale until the player arrives', () => {
+  const clock = new CoarseClock();
+  clock.seek(120, 0); // the time option of the embed, before its state caught up
+  clock.report(0, 100);
+  close(clock.value(100), 120, 'the stale 0 is ignored');
+  clock.setRunning(true, 200);
+  clock.report(120.4, 1200);
+  close(clock.value(1300), 120.5, 'arrived: reports count again');
+  clock.seek(600, 2000);
+  clock.report(121, 2500);
+  close(clock.value(2500), 600.5, 'stale again after the next seek (the clock runs)');
+  clock.report(130, 6000);
+  close(clock.value(6000), 130, 'after the settle time a report wins anyway');
+});
