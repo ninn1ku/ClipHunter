@@ -60,3 +60,16 @@ Deno.test('after a seek, reports of the old position are stale until the player 
   clock.report(130, 6000);
   close(clock.value(6000), 130, 'after the settle time a report wins anyway');
 });
+
+Deno.test('a paused player keeps the seek target until it plays', () => {
+  const clock = new CoarseClock();
+  clock.report(145, 0);
+  clock.seek(900, 1000);
+  clock.report(145, 9000);
+  close(clock.value(9000), 900, 'paused: the stale state never wins');
+  clock.setRunning(true, 10_000);
+  clock.report(145, 11_000);
+  close(clock.value(11_000), 901, 'playing: still settling');
+  clock.report(900.9, 11_200);
+  close(clock.value(11_200), 900.9, 'arrived');
+});

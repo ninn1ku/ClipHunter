@@ -5,7 +5,8 @@
 // a precise anchor: from it the position advances with wall-clock time. The estimate never runs
 // more than one step ahead of the last report (the player may have stalled without telling).
 // After a seek, reports of the old position (the player's state lags behind) are ignored until
-// the player reaches the target or SEEK_SETTLE_MS pass.
+// the player reaches the target or SEEK_SETTLE_MS of playback pass. A paused player may not
+// refresh its state at all (Twitch), so while paused the target is trusted.
 
 /** How long reports far from a seek target are taken for stale state. */
 export const SEEK_SETTLE_MS = 3000;
@@ -32,7 +33,8 @@ export class CoarseClock {
       return;
     }
     if (this.pending !== null) {
-      if (nowMs < this.pending.until && Math.abs(reported - this.pending.target) > this.step) {
+      const waiting = !this.running || nowMs < this.pending.until;
+      if (waiting && Math.abs(reported - this.pending.target) > this.step) {
         return; // still the position from before the seek
       }
       this.pending = null;
@@ -59,6 +61,9 @@ export class CoarseClock {
     this.anchorSec = this.value(nowMs);
     this.anchorAt = nowMs;
     this.running = running;
+    if (running && this.pending !== null) {
+      this.pending.until = nowMs + SEEK_SETTLE_MS; // the settle time counts from playback
+    }
   }
 
   /**
