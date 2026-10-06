@@ -31,8 +31,10 @@ final class AppConfigTest extends TestCase
         self::assertSame(Level::Info, $config->logLevel);
         self::assertSame('/srv/app/storage', $config->storagePath);
         self::assertSame(self::ROOMS_SECRET, $config->roomsSecret);
-        self::assertSame(720, $config->watchMaxHeight);
+        self::assertSame(1080, $config->watchMaxHeight);
+        self::assertSame(720, $config->watchDefaultHeight);
         self::assertSame(360 * 60, $config->watchFileRetentionSec);
+        self::assertSame(30 * 60, $config->watchIdleTtlSec);
         self::assertSame(20, $config->watchSourcesRateLimit->limit);
         self::assertSame(3600, $config->watchSourcesRateLimit->windowSec);
     }
@@ -95,6 +97,8 @@ final class AppConfigTest extends TestCase
         yield 'watch height too small' => [['WATCH_MAX_HEIGHT' => '100'], 'WATCH_MAX_HEIGHT'];
         yield 'watch height too large' => [['WATCH_MAX_HEIGHT' => '4320'], 'WATCH_MAX_HEIGHT'];
         yield 'watch retention too short' => [['WATCH_FILE_RETENTION_MIN' => '10'], 'WATCH_FILE_RETENTION_MIN'];
+        yield 'watch idle too short' => [['WATCH_IDLE_TTL_MIN' => '1'], 'WATCH_IDLE_TTL_MIN'];
+        yield 'bad default height' => [['WATCH_DEFAULT_HEIGHT' => 'hd'], 'WATCH_DEFAULT_HEIGHT'];
         yield 'bad watch rate limit' => [['RATE_LIMIT_WATCH_SOURCES' => '20 per hour'], 'rate limit'];
     }
 

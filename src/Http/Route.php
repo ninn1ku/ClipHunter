@@ -11,6 +11,7 @@ use ClipHunter\Http\Controller\DownloadStatusController;
 use ClipHunter\Http\Controller\HealthController;
 use ClipHunter\Http\Controller\WatchMediaFileController;
 use ClipHunter\Http\Controller\WatchMediaStatusController;
+use ClipHunter\Http\Controller\WatchMediaVariantsController;
 use ClipHunter\Http\Controller\WatchSourceController;
 use Psr\Http\Server\RequestHandlerInterface;
 
@@ -46,6 +47,8 @@ final readonly class Route
             new self('POST', '/api/watch/sources', WatchSourceController::class),
             new self('GET', $media, WatchMediaStatusController::class),
             new self('GET', $media . '/file', WatchMediaFileController::class),
+            new self('GET', $media . '/variants', WatchMediaVariantsController::class),
+            new self('POST', $media . '/variants', WatchMediaVariantsController::class),
         ];
     }
 }

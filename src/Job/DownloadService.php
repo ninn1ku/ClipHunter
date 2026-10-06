@@ -94,6 +94,99 @@ final readonly class DownloadService
     }
 
     /**
+     * Queues the preparation of a watch-room file, or returns an existing job for the same video
+     * and variant that is still queued, running or ready (another room, another member).
+     *
+     * Unlike downloads there is no "one active job per client" rule: a room file simply waits in
+     * the queue (whose length is still bounded), so the client sees a queue position instead of
+     * an error about some other preparation it may not even know about.
+     *
+     * @param list<array{id: string, label: string, height: int, sizeBytes: ?int}> $variants
+     *
+     * @throws ApiException QUEUE_FULL, STORAGE_FULL
+     */
+    public function createWatch(
+        string $analysisId,
+        string $url,
+        string $platformKey,
+        string $title,
+        ?int $durationSec,
+        string $optionId,
+        ?int $expectedSizeBytes,
+        array $variants,
+        string $ipHash,
+    ): DownloadJob {
+        $existing = $this->findWatch($url, $optionId);
+        if ($existing !== null) {
+            $this->logger->info('job.reused', ['job_id' => $existing->id, 'option' => $optionId]);
+
+            return $existing;
+        }
+        if ($expectedSizeBytes !== null && $expectedSizeBytes > $this->config->maxFileSizeBytes) {
+            throw new ApiException(ErrorCode::FileTooLarge, 'variant exceeds max size');
+        }
+        if (count($this->jobs->queuedIds()) >= $this->config->maxQueueLength) {
+            throw new ApiException(ErrorCode::QueueFull, 'queue full', headers: ['Retry-After' => '60']);
+        }
+        $this->guard->assertCapacityFor($expectedSizeBytes ?? 0);
+
+        $job = new DownloadJob(
+            id: Ids::generate(),
+            analysisId: $analysisId,
+            optionId: $optionId,
+            url: $url,
+            platformKey: $platformKey,
+            title: $title,
+            expectedDurationSec: $durationSec,
+            expectedSizeBytes: $expectedSizeBytes,
+            ipHash: $ipHash,
+            createdAt: $this->clock->now(),
+            purpose: JobPurpose::Watch,
+            variants: $variants,
+        );
+        $this->jobs->create($job);
+        $this->logger->info('job.queued', ['job_id' => $job->id, 'analysis_id' => $analysisId, 'option' => $optionId, 'purpose' => 'watch']);
+
+        return $job;
+    }
+
+    /**
+     * A watch job for this video and variant that is queued, running, or completed with its file
+     * still on disk; the most recent one wins.
+     */
+    public function findWatch(string $url, string $optionId): ?DownloadJob
+    {
+        $now = $this->clock->now();
+        $best = null;
+        foreach ($this->jobs->allIds() as $id) {
+            $job = $this->jobs->find($id);
+            if ($job === null || $job->purpose !== JobPurpose::Watch || $job->url !== $url || $job->optionId !== $optionId) {
+                continue;
+            }
+            $usable = $job->status->isActive() && !$this->jobs->isCancelRequested($job->id)
+                || $job->status === JobStatus::Completed && ($job->expiresAt ?? 0) > $now
+                    && is_file($this->paths->downloadDir($job->id) . '/media.' . ($job->fileExt ?? 'mp4'));
+            if ($usable && ($best === null || $job->createdAt > $best->createdAt)) {
+                $best = $job;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * Records that a room file is being used (status poll, playback, keep-alive), at most once a minute.
+     */
+    public function touch(DownloadJob $job): void
+    {
+        $now = $this->clock->now();
+        if ($job->status === JobStatus::Completed && ($job->lastAccessAt === null || $now - $job->lastAccessAt >= 60)) {
+            $job->lastAccessAt = $now;
+            $this->jobs->save($job);
+        }
+    }
+
+    /**
      * @return array<string, mixed>
      *
      * @throws ApiException JOB_NOT_FOUND

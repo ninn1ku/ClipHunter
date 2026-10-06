@@ -10,8 +10,6 @@ use ClipHunter\Config\AppConfig;
 use ClipHunter\Exception\ApiException;
 use ClipHunter\Exception\ErrorCode;
 use ClipHunter\Job\DownloadService;
-use ClipHunter\Job\JobPurpose;
-use ClipHunter\Media\DownloadOption;
 use ClipHunter\Media\OptionKind;
 use ClipHunter\RateLimit\RateLimiter;
 use ClipHunter\Security\UrlValidator;
@@ -61,8 +59,19 @@ final readonly class WatchSourceService
             $status = WatchMediaService::STATUS_READY;
         } else {
             $analysis = $this->analyzer->analyze($url->url, $ipHash);
-            $option = $this->pickOption($analysis);
-            $job = $this->downloads->create($analysis->id, $option->id, $ipHash, JobPurpose::Watch);
+            $variants = $this->variants($analysis);
+            $option = $this->pickDefault($variants);
+            $job = $this->downloads->createWatch(
+                $analysis->id,
+                $analysis->url,
+                $analysis->platformKey,
+                $analysis->title,
+                $analysis->durationSec,
+                $option['id'],
+                $option['sizeBytes'],
+                $variants,
+                $ipHash,
+            );
             $source = new WatchSource(WatchSourceKind::File, $job->id, $analysis->platformName, $analysis->title, $analysis->durationSec, $analysis->thumbnailUrl, 0);
             $status = $this->media->status($job->id)['status'];
         }
@@ -78,20 +87,42 @@ final readonly class WatchSourceService
     }
 
     /**
-     * The largest video variant that fits WATCH_MAX_HEIGHT: the outgoing bandwidth per viewer is small.
+     * The video variants members may choose from: up to WATCH_MAX_HEIGHT, highest first. Variants
+     * known to exceed MAX_FILE_SIZE are already left out by the option builder.
+     *
+     * @return non-empty-list<array{id: string, label: string, height: int, sizeBytes: ?int}>
      *
      * @throws ApiException NO_FORMATS
      */
-    private function pickOption(Analysis $analysis): DownloadOption
+    private function variants(Analysis $analysis): array
     {
-        $best = null;
+        $variants = [];
         foreach ($analysis->options as $option) {
-            if ($option->kind === OptionKind::Video && $option->height !== null && $option->height <= $this->config->watchMaxHeight
-                && ($best === null || $option->height > (int) $best->height)) {
-                $best = $option;
+            if ($option->kind === OptionKind::Video && $option->height !== null && $option->height <= $this->config->watchMaxHeight) {
+                $variants[] = ['id' => $option->id, 'label' => $option->height . 'p', 'height' => $option->height, 'sizeBytes' => $option->sizeBytes];
+            }
+        }
+        usort($variants, static fn (array $a, array $b): int => $b['height'] <=> $a['height']);
+
+        return $variants !== [] ? $variants : throw new ApiException(ErrorCode::NoFormats, 'no video option within WATCH_MAX_HEIGHT');
+    }
+
+    /**
+     * What a room starts with: the largest variant up to WATCH_DEFAULT_HEIGHT (the outgoing bandwidth
+     * per viewer is small), or the smallest one if all are larger.
+     *
+     * @param non-empty-list<array{id: string, label: string, height: int, sizeBytes: ?int}> $variants highest first
+     *
+     * @return array{id: string, label: string, height: int, sizeBytes: ?int}
+     */
+    private function pickDefault(array $variants): array
+    {
+        foreach ($variants as $variant) {
+            if ($variant['height'] <= $this->config->watchDefaultHeight) {
+                return $variant;
             }
         }
 
-        return $best ?? throw new ApiException(ErrorCode::NoFormats, 'no video option within WATCH_MAX_HEIGHT');
+        return $variants[count($variants) - 1];
     }
 }

@@ -10,6 +10,11 @@ use InvalidArgumentException;
 
 /**
  * One download request and its lifecycle. Persisted as storage/jobs/<id>.json.
+ *
+ * Watch jobs also carry the video variants a room member may switch to (the same list on every
+ * variant's job) and when their file was last used, so idle room files can be removed early.
+ *
+ * @phpstan-type Variant array{id: string, label: string, height: int, sizeBytes: ?int}
  */
 final class DownloadJob
 {
@@ -25,6 +30,8 @@ final class DownloadJob
         public readonly string $ipHash,
         public readonly int $createdAt,
         public readonly JobPurpose $purpose = JobPurpose::Download,
+        /** @var list<Variant> */
+        public readonly array $variants = [],
         public JobStatus $status = JobStatus::Queued,
         public ?Progress $progress = null,
         public ?ErrorCode $error = null,
@@ -34,6 +41,7 @@ final class DownloadJob
         public ?int $startedAt = null,
         public ?int $finishedAt = null,
         public ?int $expiresAt = null,
+        public ?int $lastAccessAt = null,
     ) {
         if (!Ids::isValid($id) || !Ids::isValid($analysisId)) {
             throw new InvalidArgumentException('Invalid job id.');
@@ -57,6 +65,7 @@ final class DownloadJob
             'ipHash' => $this->ipHash,
             'createdAt' => $this->createdAt,
             'purpose' => $this->purpose->value,
+            'variants' => $this->variants,
             'status' => $this->status->value,
             'progress' => $this->progress?->toArray(),
             'error' => $this->error?->value,
@@ -66,6 +75,7 @@ final class DownloadJob
             'startedAt' => $this->startedAt,
             'finishedAt' => $this->finishedAt,
             'expiresAt' => $this->expiresAt,
+            'lastAccessAt' => $this->lastAccessAt,
         ];
     }
 
@@ -100,6 +110,7 @@ final class DownloadJob
             ipHash: $str('ipHash'),
             createdAt: $nInt('createdAt') ?? throw new InvalidArgumentException('Malformed job: createdAt'),
             purpose: $purpose,
+            variants: self::variantsFrom($d['variants'] ?? []),
             status: $status,
             progress: is_array($progress) ? Progress::fromArray($progress) : null,
             error: $error === null ? null : ErrorCode::tryFrom($error),
@@ -109,6 +120,31 @@ final class DownloadJob
             startedAt: $nInt('startedAt'),
             finishedAt: $nInt('finishedAt'),
             expiresAt: $nInt('expiresAt'),
+            lastAccessAt: $nInt('lastAccessAt'),
         );
+    }
+
+    /**
+     * @return list<Variant>
+     */
+    private static function variantsFrom(mixed $raw): array
+    {
+        if (!is_array($raw)) {
+            throw new InvalidArgumentException('Malformed job: variants');
+        }
+        $variants = [];
+        foreach ($raw as $v) {
+            $id = is_array($v) ? ($v['id'] ?? null) : null;
+            $label = is_array($v) ? ($v['label'] ?? null) : null;
+            $height = is_array($v) ? ($v['height'] ?? null) : null;
+            $size = is_array($v) ? ($v['sizeBytes'] ?? null) : null;
+            if (!is_string($id) || preg_match('~^v\d{3,4}$~D', $id) !== 1 || !is_string($label) || !is_int($height)
+                || !(is_int($size) || $size === null)) {
+                throw new InvalidArgumentException('Malformed job: variant');
+            }
+            $variants[] = ['id' => $id, 'label' => $label, 'height' => $height, 'sizeBytes' => $size];
+        }
+
+        return $variants;
     }
 }

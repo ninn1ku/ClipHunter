@@ -6,6 +6,7 @@ namespace ClipHunter\Storage;
 
 use ClipHunter\Config\AppConfig;
 use ClipHunter\Exception\ErrorCode;
+use ClipHunter\Job\JobPurpose;
 use ClipHunter\Job\JobRepository;
 use ClipHunter\Job\JobStatus;
 use ClipHunter\Support\Clock;
@@ -15,6 +16,7 @@ use Psr\Log\LoggerInterface;
 /**
  * Retention policy (run every few minutes by a systemd timer):
  *  - finished files are deleted FILE_RETENTION_MIN after completion (job becomes "expired");
+ *  - watch-room files are also deleted once nobody has used them for WATCH_IDLE_TTL_MIN;
  *  - job records are deleted JOB_TTL_HOURS after creation;
  *  - jobs whose worker died are failed and their temp files removed;
  *  - orphaned tmp/download directories, expired analyses and rate-limit windows are removed.
@@ -75,7 +77,9 @@ final readonly class Cleaner
                 continue;
             }
 
-            if ($job->status === JobStatus::Completed && $job->expiresAt !== null && $job->expiresAt <= $now) {
+            $idle = $job->purpose === JobPurpose::Watch
+                && ($job->lastAccessAt ?? $job->finishedAt ?? $now) + $this->config->watchIdleTtlSec <= $now;
+            if ($job->status === JobStatus::Completed && ($idle || $job->expiresAt !== null && $job->expiresAt <= $now)) {
                 $this->fs->removeTree($this->paths->downloadDir($id));
                 $job->status = JobStatus::Expired;
                 $this->jobs->save($job);

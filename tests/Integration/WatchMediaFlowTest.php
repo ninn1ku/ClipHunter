@@ -22,11 +22,11 @@ final class WatchMediaFlowTest extends TestCase
         $app = new TestApp();
         $mediaId = $app->queueWatchMedia();
 
-        self::assertSame(['mediaId' => $mediaId, 'status' => 'queued', 'queuePosition' => 0, 'percent' => null, 'error' => null], $this->mediaStatus($app, $mediaId));
+        self::assertSame(['mediaId' => $mediaId, 'status' => 'queued', 'queuePosition' => 0, 'percent' => null, 'error' => null, 'optionId' => 'v240', 'label' => '240p'], $this->mediaStatus($app, $mediaId));
 
         $app->runQueuedJobs();
 
-        self::assertSame(['mediaId' => $mediaId, 'status' => 'ready', 'queuePosition' => null, 'percent' => 100.0, 'error' => null], $this->mediaStatus($app, $mediaId));
+        self::assertSame(['mediaId' => $mediaId, 'status' => 'ready', 'queuePosition' => null, 'percent' => 100.0, 'error' => null, 'optionId' => 'v240', 'label' => '240p'], $this->mediaStatus($app, $mediaId));
         $file = $app->request('GET', '/api/watch/media/' . $mediaId . '/file');
         self::assertSame(200, $file->getStatusCode());
         self::assertSame('video/mp4', $file->getHeaderLine('Content-Type'));
@@ -135,7 +135,7 @@ final class WatchMediaFlowTest extends TestCase
         self::assertSame('MEDIA_NOT_FOUND', TestApp::errorCode($app->request('GET', '/api/watch/media/' . str_repeat('a', 32))));
     }
 
-    public function testWatchFilesAreKeptForTheWatchRetentionPeriod(): void
+    public function testWatchedFilesAreKeptUntilTheWatchRetentionPeriod(): void
     {
         $app = new TestApp();
         $app->clock->now = time(); // the cleaner compares against real file mtimes
@@ -144,18 +144,91 @@ final class WatchMediaFlowTest extends TestCase
         $cleaner = $app->container->get(Cleaner::class);
         $paths = $app->container->get(StoragePaths::class);
 
-        $app->clock->advance(31 * 60); // past FILE_RETENTION_MIN for downloads
-        $cleaner->run();
-        self::assertFileExists($paths->downloadDir($mediaId) . '/media.mp4');
-        self::assertSame('ready', $this->mediaStatus($app, $mediaId)['status']);
+        // Members keep polling (keep-alive) every 20 minutes: the idle timeout never fires.
+        for ($minute = 20; $minute <= 340; $minute += 20) {
+            $app->clock->advance(20 * 60);
+            self::assertSame('ready', $this->mediaStatus($app, $mediaId)['status'], "minute $minute");
+            $cleaner->run();
+        }
+        self::assertFileExists($paths->downloadDir($mediaId) . '/media.mp4', 'past FILE_RETENTION_MIN for downloads');
 
-        $app->clock->advance(330 * 60); // 361 minutes in total, past WATCH_FILE_RETENTION_MIN=360
+        $app->clock->advance(21 * 60); // 361 minutes in total, past WATCH_FILE_RETENTION_MIN=360
         self::assertSame('expired', $this->mediaStatus($app, $mediaId)['status'], 'expired even before the cleaner runs');
         $stats = $cleaner->run();
 
         self::assertSame(1, $stats['expired_files']);
         self::assertDirectoryDoesNotExist($paths->downloadDir($mediaId));
         self::assertSame(410, $app->request('GET', '/api/watch/media/' . $mediaId . '/file')->getStatusCode());
+    }
+
+    public function testFilesNobodyUsesAreRemovedAfterTheIdleTimeout(): void
+    {
+        $app = new TestApp();
+        $app->clock->now = time();
+        $mediaId = $app->queueWatchMedia();
+        $app->runQueuedJobs();
+        $cleaner = $app->container->get(Cleaner::class);
+        $paths = $app->container->get(StoragePaths::class);
+
+        $app->clock->advance(29 * 60);
+        $cleaner->run();
+        self::assertFileExists($paths->downloadDir($mediaId) . '/media.mp4');
+
+        $app->clock->advance(2 * 60); // 31 minutes without a status poll or a file request
+        $stats = $cleaner->run();
+
+        self::assertSame(1, $stats['expired_files']);
+        self::assertDirectoryDoesNotExist($paths->downloadDir($mediaId));
+        self::assertSame('expired', $this->mediaStatus($app, $mediaId)['status']);
+    }
+
+    public function testStreamingTheFileCountsAsUse(): void
+    {
+        $app = new TestApp();
+        $app->clock->now = time();
+        $mediaId = $app->queueWatchMedia();
+        $app->runQueuedJobs();
+
+        $app->clock->advance(25 * 60);
+        $app->request('GET', '/api/watch/media/' . $mediaId . '/file', headers: ['Range' => 'bytes=0-9']);
+        $app->clock->advance(25 * 60);
+        $app->container->get(Cleaner::class)->run();
+
+        self::assertFileExists($app->container->get(StoragePaths::class)->downloadDir($mediaId) . '/media.mp4');
+    }
+
+    public function testMembersCanPrepareAnotherQualityOnce(): void
+    {
+        $app = new TestApp();
+        $mediaId = $app->queueWatchMedia('hd');
+
+        $variants = TestApp::decode($app->request('GET', '/api/watch/media/' . $mediaId . '/variants'))['variants'];
+        self::assertIsArray($variants);
+        self::assertSame(['v1080', 'v720', 'v480', 'v360'], array_column($variants, 'optionId'), 'up to WATCH_MAX_HEIGHT=1080');
+        self::assertSame([null, $mediaId, null, null], array_column($variants, 'mediaId'));
+        $current = $variants[1];
+        self::assertIsArray($current);
+        self::assertSame('queued', $current['status']);
+
+        $post = fn (string $option) => $app->request('POST', '/api/watch/media/' . $mediaId . '/variants', ['optionId' => $option], ['Origin' => TestApp::APP_URL]);
+        $first = $post('v480');
+        $again = $post('v480');
+        $same = $post('v720');
+
+        self::assertSame(202, $first->getStatusCode(), (string) $first->getBody());
+        $variantId = TestApp::decode($first)['mediaId'];
+        self::assertIsString($variantId);
+        self::assertNotSame($mediaId, $variantId);
+        self::assertSame('v480', TestApp::decode($first)['optionId']);
+        self::assertSame($variantId, TestApp::decode($again)['mediaId'], 'prepared only once');
+        self::assertSame($mediaId, TestApp::decode($same)['mediaId'], 'the current variant is the media itself');
+        self::assertSame('INVALID_OPTION', TestApp::errorCode($post('v2160')), 'above WATCH_MAX_HEIGHT');
+        self::assertSame('INVALID_OPTION', TestApp::errorCode($post('bestvideo')), 'raw yt-dlp formats are never accepted');
+
+        $listed = TestApp::decode($app->request('GET', '/api/watch/media/' . $variantId . '/variants'))['variants'];
+        self::assertIsArray($listed);
+        self::assertSame([null, $mediaId, $variantId, null], array_column($listed, 'mediaId'), 'any variant lists them all');
+        self::assertSame(404, $app->request('GET', '/api/watch/media/' . str_repeat('a', 32) . '/variants')->getStatusCode());
     }
 
     /**

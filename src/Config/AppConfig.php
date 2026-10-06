@@ -61,7 +61,9 @@ final readonly class AppConfig
         public string $fileDelivery,
         public string $roomsSecret,
         public int $watchMaxHeight,
+        public int $watchDefaultHeight,
         public int $watchFileRetentionSec,
+        public int $watchIdleTtlSec,
         public RateLimitRule $watchSourcesRateLimit,
     ) {
     }
@@ -144,8 +146,10 @@ final readonly class AppConfig
                 $isProduction ? self::FILE_DELIVERY_XACCEL : self::FILE_DELIVERY_PHP,
             ),
             roomsSecret: $roomsSecret,
-            watchMaxHeight: $reader->int('WATCH_MAX_HEIGHT', 720, 144, 2160),
+            watchMaxHeight: $reader->int('WATCH_MAX_HEIGHT', 1080, 144, 2160),
+            watchDefaultHeight: $reader->int('WATCH_DEFAULT_HEIGHT', 720, 144, 2160),
             watchFileRetentionSec: $reader->int('WATCH_FILE_RETENTION_MIN', 360, 30, 1_440) * 60,
+            watchIdleTtlSec: $reader->int('WATCH_IDLE_TTL_MIN', 30, 5, 1_440) * 60,
             watchSourcesRateLimit: RateLimitRule::fromString($reader->string('RATE_LIMIT_WATCH_SOURCES', '20/3600')),
         );
     }

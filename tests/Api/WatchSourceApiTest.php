@@ -87,6 +87,42 @@ final class WatchSourceApiTest extends TestCase
         self::assertSame('v720', $app->container->get(JobRepository::class)->find($mediaId)?->optionId);
     }
 
+    public function testStartsWithTheSmallestVariantWhenAllExceedTheDefault(): void
+    {
+        $app = new TestApp(['WATCH_DEFAULT_HEIGHT' => '240']);
+
+        $mediaId = $app->queueWatchMedia('hd');
+
+        self::assertSame('v360', $app->container->get(JobRepository::class)->find($mediaId)?->optionId);
+    }
+
+    public function testTheSameVideoIsPreparedOnlyOnce(): void
+    {
+        $app = new TestApp();
+
+        $first = $app->queueWatchMedia();
+        $second = $app->queueWatchMedia();
+
+        self::assertSame($first, $second, 'a second room reuses the queued job');
+        self::assertCount(1, $app->container->get(JobRepository::class)->queuedIds());
+    }
+
+    public function testRoomFilesQueueInsteadOfFailingWhenTheClientHasAnotherJob(): void
+    {
+        $app = new TestApp(['MAX_ACTIVE_JOBS_PER_IP' => '1']);
+        $app->queueDownload(); // an active download from the same client
+
+        $first = $app->watchSource('https://vk.com/video-1_2?v=ok');
+        $second = $app->watchSource('https://vk.com/video-1_2?v=hd');
+
+        self::assertSame(202, $first->getStatusCode(), (string) $first->getBody());
+        self::assertSame(202, $second->getStatusCode(), (string) $second->getBody());
+        $source = TestApp::decode($second)['source'];
+        self::assertIsArray($source);
+        self::assertSame('queued', $source['status']);
+        self::assertCount(3, $app->container->get(JobRepository::class)->queuedIds());
+    }
+
     public function testFailsWhenNoVariantFitsWatchMaxHeight(): void
     {
         $response = (new TestApp(['WATCH_MAX_HEIGHT' => '144']))->watchSource('https://vk.com/video-1_2?v=hd');

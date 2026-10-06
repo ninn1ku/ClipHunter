@@ -14,6 +14,7 @@ use ClipHunter\Http\Controller\DownloadStatusController;
 use ClipHunter\Http\Controller\HealthController;
 use ClipHunter\Http\Controller\WatchMediaFileController;
 use ClipHunter\Http\Controller\WatchMediaStatusController;
+use ClipHunter\Http\Controller\WatchMediaVariantsController;
 use ClipHunter\Http\Controller\WatchSourceController;
 use ClipHunter\Http\JsonResponder;
 use ClipHunter\Http\Middleware\AccessLogMiddleware;
@@ -165,7 +166,9 @@ final class Services
         $c->set(MediaTicket::class, static fn (): MediaTicket => new MediaTicket($config->roomsSecret));
         $c->set(WatchMediaService::class, static fn (Container $c): WatchMediaService => new WatchMediaService(
             $c->get(DownloadService::class),
+            $c->get(RateLimiter::class),
             $c->get(Clock::class),
+            $config,
         ));
         $c->set(WatchSourceService::class, static fn (Container $c): WatchSourceService => new WatchSourceService(
             $c->get(UrlValidator::class),
@@ -226,6 +229,10 @@ final class Services
             $c->get(JsonResponder::class),
         ));
         $c->set(WatchMediaStatusController::class, static fn (Container $c): WatchMediaStatusController => new WatchMediaStatusController(
+            $c->get(WatchMediaService::class),
+            $c->get(JsonResponder::class),
+        ));
+        $c->set(WatchMediaVariantsController::class, static fn (Container $c): WatchMediaVariantsController => new WatchMediaVariantsController(
             $c->get(WatchMediaService::class),
             $c->get(JsonResponder::class),
         ));
