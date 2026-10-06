@@ -59,3 +59,13 @@ Deno.test('end detection and the sync window', () => {
   assert.ok(!inSyncWindow(0.3, PRECISE_PLAYER));
   assert.ok(inSyncWindow(0.9, EMBED_PLAYER));
 });
+
+Deno.test('a seek the player ignored is not repeated for a while', async () => {
+  const { seekIgnored, SEEK_RETRY_MS } = await import('../../public/assets/js/watch/playback.js');
+  const last = { at: 1000, from: 121.2, to: 140 };
+  assert.ok(seekIgnored(last, 121.3, 3000), 'still where it was: an ad or loading');
+  assert.ok(!seekIgnored(last, 139.5, 3000), 'the seek took effect');
+  assert.ok(!seekIgnored(last, 121.3, 1000 + SEEK_RETRY_MS), 'retry after the pause');
+  assert.ok(!seekIgnored(null, 121.3, 3000));
+  assert.ok(!seekIgnored({ at: 1000, from: 50, to: 50.5 }, 50, 2000), 'tiny seeks are not judged');
+});

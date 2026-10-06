@@ -86,6 +86,23 @@ export function decideCorrection({ drift, player, frozen = false, rateCorrecting
   return rateCorrecting ? { action: 'rate', rate: 1 } : { action: 'none' };
 }
 
+/** How long an ignored seek is not repeated: the platform is busy (an ad, loading). */
+export const SEEK_RETRY_MS = 8000;
+
+/**
+ * Whether our last seek has not taken effect yet: the player is still where it was when we
+ * asked. Embedded players ignore seeks while they show an ad or are still loading, and repeating
+ * the seek every tick only fights them. Pure.
+ *
+ * @param {{at: number, from: number, to: number}|null} lastSeek
+ * @param {number} position the player's position now
+ * @param {number} now ms, same clock as lastSeek.at
+ */
+export function seekIgnored(lastSeek, position, now) {
+  return lastSeek !== null && now - lastSeek.at < SEEK_RETRY_MS &&
+    Math.abs(position - lastSeek.from) < 0.5 && Math.abs(position - lastSeek.to) > 1;
+}
+
 /**
  * @param {number} expected
  * @param {number|null} durationSec

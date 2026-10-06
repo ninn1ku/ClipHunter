@@ -19,6 +19,7 @@ import {
   isAtEnd,
   PRECISE_PLAYER,
   SEEK_FREEZE_MS,
+  seekIgnored,
 } from './playback.js';
 
 const TICK_MS = 500;
@@ -68,6 +69,8 @@ export class SyncController {
     this.pendingSeek = null;
     this.frozenUntil = 0;
     this.rateCorrecting = false;
+    /** @type {{at: number, from: number, to: number}|null} the last correcting seek */
+    this.lastSeek = null;
     this.lastDrift = 0;
     this.lastCheck = 0;
     this.autoplayBlocked = false;
@@ -398,7 +401,8 @@ export class SyncController {
       return;
     }
 
-    const drift = adapter.getCurrentTime() - expected;
+    const position = adapter.getCurrentTime();
+    const drift = position - expected;
     this.lastDrift = drift;
     const decision = hardSeek && Math.abs(drift) > 0.05 ? { action: 'seek' } : decideCorrection({
       drift,
@@ -407,7 +411,11 @@ export class SyncController {
       rateCorrecting: this.rateCorrecting,
     });
 
-    if (decision.action === 'seek') {
+    if (decision.action === 'seek' && !hardSeek && seekIgnored(this.lastSeek, position, now)) {
+      // The platform has not honoured our last seek (an ad, still loading): wait for it.
+      this.frozenUntil = now + SEEK_FREEZE_MS;
+    } else if (decision.action === 'seek') {
+      this.lastSeek = { at: now, from: position, to: expected };
       // An embedded player's seek can take a while to settle and passes through play states.
       this.programmatic(() => {
         this.pendingSeek = expected;
@@ -721,6 +729,7 @@ export class SyncController {
     this.pendingSeek = null;
     this.pendingSeekTarget = null;
     this.rateCorrecting = false;
+    this.lastSeek = null;
     this.autoplayBlocked = false;
     this.reportedBuffering = false;
     this.frozenUntil = 0;
