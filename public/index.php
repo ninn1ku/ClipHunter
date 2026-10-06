@@ -22,6 +22,14 @@ if (PHP_SAPI === 'cli-server') {
 
         return;
     }
+    if (is_string($path) && preg_match('~^/watch(/[0-9A-HJKMNP-TV-Z]{12})?/?$~D', $path) === 1) {
+        // One static page for the start screen and every room; Nginx does the same with try_files.
+        header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: no-cache');
+        readfile(__DIR__ . '/watch.html');
+
+        return;
+    }
     if (is_string($path) && !str_starts_with($path, '/api/')) {
         return false;
     }

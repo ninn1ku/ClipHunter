@@ -18,7 +18,8 @@
     "include": ["rooms/", "tests/js/", "public/assets/js/watch/"],
     "rules": {
       "tags": ["recommended"],
-      "include": ["eqeqeq", "no-console", "prefer-const", "explicit-function-return-type"]
+      "include": ["eqeqeq", "no-console", "prefer-const", "explicit-function-return-type"],
+      "exclude": ["no-window", "no-window-prefix"]
     }
   },
   "test": {
