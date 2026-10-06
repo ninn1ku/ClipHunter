@@ -7,7 +7,9 @@ namespace ClipHunter\Watch;
 /**
  * Media a watch room can play, resolved and vetted by PHP. Text fields are already sanitized.
  *
- * ref is the YouTube video id (kind youtube) or the id of the watch job preparing the file (kind file).
+ * ref identifies the media for its kind (see WatchSourceKind::refPattern()): a YouTube video id, a VK
+ * owner_video pair, a Twitch video:<id> or channel:<login>, an AniLiberty release:episode, or the id of
+ * the watch job preparing the file (kind file).
  */
 final readonly class WatchSource
 {
@@ -39,8 +41,10 @@ final readonly class WatchSource
             'status' => $status,
         ];
 
-        return $this->kind === WatchSourceKind::YouTube
-            ? ['videoId' => $this->ref] + $data
-            : ['mediaId' => $this->ref] + $data;
+        return match ($this->kind) {
+            WatchSourceKind::File => ['mediaId' => $this->ref] + $data,
+            WatchSourceKind::YouTube => ['videoId' => $this->ref, 'ref' => $this->ref] + $data,
+            default => ['ref' => $this->ref] + $data,
+        };
     }
 }

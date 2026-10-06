@@ -34,6 +34,7 @@ final class WatchSourceApiTest extends TestCase
         $body = TestApp::decode($response);
         self::assertSame([
             'videoId' => 'dQw4w9WgXcQ',
+            'ref' => 'dQw4w9WgXcQ',
             'kind' => 'youtube',
             'platform' => 'YouTube',
             'title' => null,
@@ -50,11 +51,49 @@ final class WatchSourceApiTest extends TestCase
         self::assertSame($app->clock->now + 600, $payload['exp']);
     }
 
+    public function testVkVideoLinksPlayInTheOfficialEmbedWithoutYtDlp(): void
+    {
+        $app = new TestApp();
+        $argvFile = tempnam(sys_get_temp_dir(), 'argv');
+        self::assertIsString($argvFile);
+        unlink($argvFile);
+        $_ENV['FAKE_YTDLP_ARGV_FILE'] = $argvFile;
+
+        try {
+            $response = $app->watchSource('https://vkvideo.ru/video-22822305_456241864?t=1m5s');
+        } finally {
+            unset($_ENV['FAKE_YTDLP_ARGV_FILE']);
+        }
+
+        self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
+        self::assertFileDoesNotExist($argvFile, 'yt-dlp must not run for embeddable VK links');
+        $body = TestApp::decode($response);
+        $source = $body['source'];
+        self::assertIsArray($source);
+        self::assertSame(['vk', '-22822305_456241864', 'ready'], [$source['kind'], $source['ref'], $source['status']]);
+        $payload = $this->verifiedPayload($app, $body['ticket']);
+        self::assertSame(['vk', '-22822305_456241864', 'ВКонтакте', 65], [$payload['kind'], $payload['ref'], $payload['platform'], $payload['startSec']]);
+    }
+
+    public function testVkLinksWithoutAVideoIdAndFileModeGoThroughTheWorker(): void
+    {
+        $app = new TestApp();
+
+        $wall = $app->watchSource('https://vk.com/wall-1_2?v=ok');
+        $forced = $app->watchSource('https://vkvideo.ru/video-1_2?v=hd', 'file');
+
+        self::assertSame(202, $wall->getStatusCode(), (string) $wall->getBody());
+        self::assertSame(202, $forced->getStatusCode(), (string) $forced->getBody());
+        $source = TestApp::decode($forced)['source'];
+        self::assertIsArray($source);
+        self::assertSame('file', $source['kind']);
+    }
+
     public function testOtherPlatformsArePreparedByTheWorkerAsWatchJobs(): void
     {
         $app = new TestApp();
 
-        $response = $app->watchSource('https://vk.com/video-1_2?v=ok');
+        $response = $app->watchSource('https://vk.com/wall-1_2?v=ok');
 
         self::assertSame(202, $response->getStatusCode(), (string) $response->getBody());
         $body = TestApp::decode($response);
@@ -112,8 +151,8 @@ final class WatchSourceApiTest extends TestCase
         $app = new TestApp(['MAX_ACTIVE_JOBS_PER_IP' => '1']);
         $app->queueDownload(); // an active download from the same client
 
-        $first = $app->watchSource('https://vk.com/video-1_2?v=ok');
-        $second = $app->watchSource('https://vk.com/video-1_2?v=hd');
+        $first = $app->watchSource('https://vk.com/wall-1_2?v=ok');
+        $second = $app->watchSource('https://vk.com/wall-1_2?v=hd');
 
         self::assertSame(202, $first->getStatusCode(), (string) $first->getBody());
         self::assertSame(202, $second->getStatusCode(), (string) $second->getBody());
@@ -125,7 +164,7 @@ final class WatchSourceApiTest extends TestCase
 
     public function testFailsWhenNoVariantFitsWatchMaxHeight(): void
     {
-        $response = (new TestApp(['WATCH_MAX_HEIGHT' => '144']))->watchSource('https://vk.com/video-1_2?v=hd');
+        $response = (new TestApp(['WATCH_MAX_HEIGHT' => '144']))->watchSource('https://vk.com/wall-1_2?v=hd');
 
         self::assertSame(422, $response->getStatusCode());
         self::assertSame('NO_FORMATS', TestApp::errorCode($response));
@@ -158,7 +197,7 @@ final class WatchSourceApiTest extends TestCase
         yield 'youtube channel' => ['https://www.youtube.com/@channel', null, 400, 'INVALID_URL'];
         yield 'youtube playlist' => ['https://www.youtube.com/playlist?list=PL123', null, 422, 'PLAYLIST_NOT_SUPPORTED'];
         yield 'unknown mode' => ['https://youtu.be/dQw4w9WgXcQ', 'stream', 400, 'INVALID_REQUEST'];
-        yield 'platform error' => ['https://vk.com/video-1_2?v=private', null, 422, 'VIDEO_PRIVATE'];
+        yield 'platform error' => ['https://vk.com/wall-1_2?v=private', null, 422, 'VIDEO_PRIVATE'];
     }
 
     #[DataProvider('rejected')]

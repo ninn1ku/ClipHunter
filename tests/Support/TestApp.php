@@ -141,7 +141,7 @@ final class TestApp
      */
     public function queueWatchMedia(string $scenario = 'ok'): string
     {
-        $response = $this->watchSource('https://vk.com/video-1_2?v=' . $scenario);
+        $response = $this->watchSource('https://vk.com/wall-1_2?v=' . $scenario);
         $source = self::decode($response)['source'] ?? null;
         $mediaId = is_array($source) ? ($source['mediaId'] ?? null) : null;
         if (!is_string($mediaId)) {

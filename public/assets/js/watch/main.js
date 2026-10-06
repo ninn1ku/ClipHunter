@@ -5,6 +5,7 @@ import { formatBytes } from '../format.js';
 import { fallbackTitle, needsPreparation, playerQualityNote, serverFallbackUrl } from './kinds.js';
 import { MediaWatcher } from './media.js';
 import { Html5PlayerAdapter } from './players/html5.js';
+import { VkPlayerAdapter } from './players/vk.js';
 import { YouTubePlayerAdapter } from './players/youtube.js';
 import { SyncController } from './sync.js';
 import { roomErrorText, TERMINAL_SCREENS } from './messages.js';
@@ -30,6 +31,7 @@ const KEEPALIVE_MS = 5 * 60_000;
 /** Player adapter per media kind; each loads its platform's script only when first used. */
 const ADAPTERS = {
   youtube: YouTubePlayerAdapter,
+  vk: VkPlayerAdapter,
   file: Html5PlayerAdapter,
 };
 

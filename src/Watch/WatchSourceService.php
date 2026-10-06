@@ -13,15 +13,17 @@ use ClipHunter\Job\DownloadService;
 use ClipHunter\Media\OptionKind;
 use ClipHunter\RateLimit\RateLimiter;
 use ClipHunter\Security\UrlValidator;
+use ClipHunter\Security\ValidatedUrl;
 use ClipHunter\Support\Clock;
 use Psr\Log\LoggerInterface;
 
 /**
  * POST /api/watch/sources use case: turns a user URL into media a watch room can play.
  *
- * YouTube links are parsed locally and played through the official embed (no yt-dlp, no server
- * bandwidth). Everything else, and YouTube in forced file mode, goes through the regular analysis
- * and is prepared by the download worker as a watch job capped at WATCH_MAX_HEIGHT.
+ * Links the platforms' official players can show (YouTube, VK Video) are parsed locally and played
+ * in the browser (no yt-dlp, no server bandwidth). Everything else, and any link in forced file
+ * mode, goes through the regular analysis and is prepared by the download worker as a watch job
+ * capped at WATCH_MAX_HEIGHT.
  */
 final readonly class WatchSourceService
 {
@@ -53,9 +55,8 @@ final readonly class WatchSourceService
 
         $url = $this->validator->validate($rawUrl);
 
-        if ($url->platform->key === 'youtube' && $mode === self::MODE_AUTO) {
-            $video = YouTubeId::fromUrl($url->url);
-            $source = new WatchSource(WatchSourceKind::YouTube, $video->id, $url->platform->name, null, null, $video->thumbnailUrl(), $video->startSec);
+        $source = $mode === self::MODE_AUTO ? $this->embedded($url) : null;
+        if ($source !== null) {
             $status = WatchMediaService::STATUS_READY;
         } else {
             $analysis = $this->analyzer->analyze($url->url, $ipHash);
@@ -84,6 +85,29 @@ final readonly class WatchSourceService
         ]);
 
         return ['source' => $source, 'status' => $status, 'ticket' => $this->tickets->issue($source, $this->clock->now())];
+    }
+
+    /**
+     * The media an official embed can play, or null when the link has to be prepared as a file.
+     *
+     * @throws ApiException INVALID_URL / PLAYLIST_NOT_SUPPORTED for YouTube links without a video
+     */
+    private function embedded(ValidatedUrl $url): ?WatchSource
+    {
+        $platform = $url->platform->name;
+
+        switch ($url->platform->key) {
+            case 'youtube':
+                $video = YouTubeId::fromUrl($url->url);
+
+                return new WatchSource(WatchSourceKind::YouTube, $video->id, $platform, null, null, $video->thumbnailUrl(), $video->startSec);
+            case 'vk':
+                $video = VkVideoId::fromUrl($url->url);
+
+                return $video === null ? null : new WatchSource(WatchSourceKind::Vk, $video->ref(), $platform, null, null, null, $video->startSec);
+            default:
+                return null;
+        }
     }
 
     /**

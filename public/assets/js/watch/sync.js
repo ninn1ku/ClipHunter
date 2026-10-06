@@ -38,7 +38,7 @@ const CAPTIONS_KEY = 'ch:captions';
  *   ready: boolean, playing: boolean, position: number, duration: number|null,
  *   volume: number, muted: boolean, badge: 'offline'|'syncing'|'synced',
  *   overlay: null|'loading'|'autoplay'|'ended'|{error: string}, title: string|null, buffering: boolean,
- *   live?: boolean, captions?: string|null,
+ *   live?: boolean, ad?: boolean, nativeControls?: boolean, captions?: string|null,
  * }} SyncStatus
  */
 
@@ -679,6 +679,7 @@ export class SyncController {
       s.duration = this.duration();
       s.title = adapter.getTitle?.() ?? null;
       s.live = this.isLive();
+      s.ad = adapter.isInAd?.() ?? false;
       s.captions = typeof adapter.getCaptions === 'function'
         ? (adapter.getCaptions().active ?? null)
         : undefined;
@@ -688,6 +689,7 @@ export class SyncController {
     }
     s.volume = this.volume.level;
     s.muted = this.volume.muted;
+    s.nativeControls = adapter?.capabilities.nativeControls ?? false;
 
     if (this.connection !== 'open') {
       s.badge = 'offline';

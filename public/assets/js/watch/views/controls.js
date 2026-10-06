@@ -462,6 +462,9 @@ export class PlayerControls {
     this.wasPlaying = status.playing;
 
     this.player.dataset.playing = String(status.playing);
+    // The platform's own controls must stay usable: always (nativeControls) or during its ads.
+    this.player.dataset.passthrough = String(Boolean(status.nativeControls || status.ad));
+    this.player.dataset.live = String(Boolean(status.live));
     this.title.textContent = title;
     this.chipTime.textContent = `${formatTime(position)} / ${formatTime(duration)}`;
 

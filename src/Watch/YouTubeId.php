@@ -18,9 +18,6 @@ final readonly class YouTubeId
 {
     public const ID_PATTERN = '~^[A-Za-z0-9_-]{11}$~D';
 
-    /** Longer start offsets are not meaningful for a single video and are ignored. */
-    private const MAX_START_SEC = 86_400;
-
     private function __construct(
         public string $id,
         public int $startSec,
@@ -58,7 +55,7 @@ final readonly class YouTubeId
             throw new ApiException(ErrorCode::InvalidUrl, 'no youtube video id');
         }
 
-        return new self($candidate, self::startSec($query['t'] ?? $query['start'] ?? null));
+        return new self($candidate, StartOffset::parse($query['t'] ?? $query['start'] ?? null));
     }
 
     public function thumbnailUrl(): string
@@ -82,21 +79,5 @@ final readonly class YouTubeId
         $segments = array_values(array_filter(explode('/', $path), static fn (string $s): bool => $s !== ''));
 
         return $segments[$index] ?? null;
-    }
-
-    private static function startSec(mixed $raw): int
-    {
-        if (!is_string($raw)) {
-            return 0;
-        }
-        if (preg_match('~^\d{1,6}s?$~D', $raw) === 1) {
-            $sec = (int) $raw;
-        } elseif (preg_match('~^(?:(\d{1,2})h)?(?:(\d{1,4})m)?(?:(\d{1,6})s)?$~D', $raw, $m) === 1 && $raw !== '') {
-            $sec = (int) ($m[1] ?? 0) * 3600 + (int) ($m[2] ?? 0) * 60 + (int) ($m[3] ?? 0);
-        } else {
-            return 0;
-        }
-
-        return $sec <= self::MAX_START_SEC ? $sec : 0;
     }
 }

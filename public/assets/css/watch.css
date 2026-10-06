@@ -692,6 +692,17 @@
   display: none;
 }
 
+/* The platform's own controls in use (Twitch always, VK during its ads): nothing of ours over the
+   video, so clicks reach the embedded player. */
+.player[data-passthrough="true"] .player__ui {
+  display: none;
+}
+
+/* A live stream has no shared position to seek to. */
+.player[data-live="true"] .player__progress {
+  visibility: hidden;
+}
+
 /* While playing, controls fade out after a few idle seconds (never while focused). */
 .player[data-playing="true"][data-active="false"]:not(:has(.player__ui :focus-visible)) .player__ui {
   opacity: 0;
