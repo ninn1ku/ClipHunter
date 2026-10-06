@@ -5,7 +5,8 @@
 #
 # Installs: nginx, PHP 8.4 (packages.sury.org), Composer, ffmpeg, deno, yt-dlp (venv),
 # certbot, unattended-upgrades; creates the cliphunter system user, directory layout,
-# PHP-FPM pool, systemd units and logrotate config. Does NOT touch the firewall or SSH.
+# PHP-FPM pool, systemd units (worker, rooms service, timers) and logrotate config.
+# Does NOT touch the firewall or SSH.
 set -euo pipefail
 
 DOMAIN="${1:?usage: provision.sh <domain> [letsencrypt-email]}"
@@ -80,7 +81,7 @@ id cliphunter >/dev/null 2>&1 || useradd --system --home-dir "$APP" --no-create-
 usermod -a -G cliphunter www-data
 install -d -o root -g root -m 755 "$APP" "$APP/releases" "$APP/shared" /var/www/certbot
 install -d -o cliphunter -g cliphunter -m 2750 "$APP/shared/storage"
-for d in analyses jobs jobs/queue jobs/running tmp downloads ratelimit locks cache cache/yt-dlp cache/deno logs; do
+for d in analyses jobs jobs/queue jobs/running tmp downloads ratelimit locks cache cache/yt-dlp cache/deno cache/deno-rooms rooms logs; do
     install -d -o cliphunter -g cliphunter -m 2750 "$APP/shared/storage/$d"
 done
 
@@ -98,6 +99,8 @@ systemctl reload "php${PHP}-fpm"
 log "Nginx"
 install -m 644 "$SRC/nginx/cliphunter-headers.conf" /etc/nginx/snippets/cliphunter-headers.conf
 install -m 644 "$SRC/nginx/cliphunter-php.conf" /etc/nginx/snippets/cliphunter-php.conf
+sed -e "s#__DOMAIN__#$DOMAIN#g" "$SRC/nginx/cliphunter-watch-headers.conf" > /etc/nginx/snippets/cliphunter-watch-headers.conf
+chmod 644 /etc/nginx/snippets/cliphunter-watch-headers.conf
 rm -f /etc/nginx/sites-enabled/default
 if [[ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
     sed -e "s#__DOMAIN__#$DOMAIN#g" -e "s#__APP__#$APP#g" "$SRC/nginx/cliphunter.conf" > /etc/nginx/sites-available/cliphunter.conf
@@ -137,6 +140,7 @@ install -m 644 "$SRC/logrotate/cliphunter" /etc/logrotate.d/cliphunter
 systemctl daemon-reload
 systemctl enable --now cliphunter-cleanup.timer cliphunter-ytdlp-update.timer
 systemctl enable cliphunter-worker@1.service  # started by deploy.sh once a release exists
+systemctl enable cliphunter-rooms.service     # started by deploy.sh once a release has rooms/
 
 log "Automatic security updates"
 echo 'APT::Periodic::Update-Package-Lists "1"; APT::Periodic::Unattended-Upgrade "1";' > /etc/apt/apt.conf.d/20auto-upgrades

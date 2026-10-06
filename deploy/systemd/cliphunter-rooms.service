@@ -1,0 +1,58 @@
+[Unit]
+Description=ClipHunter rooms service (watch-room WebSocket, Deno)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cliphunter
+Group=cliphunter
+WorkingDirectory=/var/www/cliphunter/current
+EnvironmentFile=/var/www/cliphunter/shared/.env
+Environment=HOME=/var/www/cliphunter/shared/storage/cache
+Environment=DENO_DIR=/var/www/cliphunter/shared/storage/cache/deno-rooms
+Environment=DENO_NO_UPDATE_CHECK=1
+# Deno permissions are the second sandbox: loopback listener only (no outbound network), only
+# the variables it needs, and the snapshot directory as the only readable/writable path.
+ExecStart=/usr/local/bin/deno run --quiet --no-prompt --no-config --no-lock --no-remote --no-npm \
+  --allow-net=127.0.0.1:8790 \
+  --allow-env=APP_ENV,APP_URL,LOG_LEVEL,STORAGE_PATH,ROOMS_* \
+  --allow-read=/var/www/cliphunter/shared/storage/rooms \
+  --allow-write=/var/www/cliphunter/shared/storage/rooms \
+  --v8-flags=--max-old-space-size=96 \
+  /var/www/cliphunter/current/rooms/main.ts
+Restart=always
+RestartSec=2
+# SIGTERM: snapshot, close every socket with 1012 (clients reconnect), exit.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+UMask=0027
+
+# Resource limits (1 vCPU / 1 GB server; rooms is light JSON fan-out)
+MemoryMax=192M
+CPUQuota=50%
+TasksMax=32
+LimitNOFILE=4096
+
+# Sandboxing, as for cliphunter-worker@.service. No MemoryDenyWriteExecute: V8 needs a JIT.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/www/cliphunter/shared/storage/rooms /var/www/cliphunter/shared/storage/cache/deno-rooms
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

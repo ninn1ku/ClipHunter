@@ -774,3 +774,44 @@ HTTP → HTTPS-редирект и сертификат; главная стра
 | Lockout по SSH при настройке firewall | Низкая | Правила с автоматическим откатом через 2 минуты, порт 22 в allowlist, подтверждение владельца перед применением |
 | Лимиты Let's Encrypt и сбои DuckDNS | Низкая | Сначала тест на staging-окружении certbot, статический IP без обновлятора |
 | Локальная разработка на Windows не равна Linux | Средняя | CI на ubuntu для всех тестов, process-код через `symfony/process`, интеграционные тесты воркера в CI и на сервере |
+
+---
+
+## 26. Совместный просмотр
+
+План и обоснования решений: [`WATCH_PARTY_PLAN.md`](WATCH_PARTY_PLAN.md). Здесь — что реализовано и чем реализация отличается от плана.
+
+### Схема
+
+```text
+Браузер /watch, /watch/{roomId}  ──fetch──▶ Nginx /api/watch/* ──▶ PHP-FPM (WatchSourceService, WatchMediaService)
+        │                                                              │ тикет (HMAC-SHA256, ROOMS_SECRET)
+        └──WebSocket wss://…/ws/rooms──▶ Nginx ──▶ 127.0.0.1:8790 Deno (rooms/: Gateway → Connection → Room)
+YouTube: iframe youtube-nocookie.com (сервер не участвует). Остальные площадки: воркер → downloads/<id>/media.mp4 → X-Accel.
+```
+
+- **PHP** (`src/Watch/`): `POST /api/watch/sources` разбирает YouTube-ссылки без yt-dlp (`YouTubeId`), остальное отдаёт в `AnalyzeService` и ставит задание `purpose=watch` с наибольшим вариантом ≤ `WATCH_MAX_HEIGHT`. Ответ содержит тикет (`MediaTicket`). `GET /api/watch/media/{id}` — статус подготовки, `/file` — файл inline (X-Accel или PHP с Range в dev). Watch-задания невидимы для `/api/downloads/*`; файлы хранятся `WATCH_FILE_RETENTION_MIN`.
+- **Deno** (`rooms/`): `domain/` (Room, Registry, playback, text), `security/` (тикеты через WebCrypto, id и хэши токенов, rate limit), `persistence/snapshot.ts`, `protocol.ts`, `connection.ts`, `server.ts`, `main.ts`. Ноль внешних зависимостей, только Web API, `Deno.*` и `node:crypto`.
+- **Фронтенд** (`public/watch.html`, `public/assets/js/watch/`): `session.js` (resume/join/create, переподключение), `room-client.js` (WS, reqId → Promise, backoff), `store.js` (чистый редьюсер), `clock.js` и `playback.js` (чистая математика), `sync.js` (SyncController), `players/` (HTML5 и YouTube-адаптеры), `views/`.
+
+### Отклонения от плана и найденные факты
+
+| Тема | Решение |
+|---|---|
+| `deno.json` | Один файл в корне, а не `rooms/deno.json`: фронтенд-модули из `public/assets/js/watch/` тестируются тем же Deno (`tests/js/`). На yt-dlp он не влияет: yt-dlp запускает deno с `--no-config`; production-юнит rooms тоже запускается с `--no-config`. |
+| Лимит размера кадра | `Deno.upgradeWebSocket` (Deno 2.9.7) не ограничивает размер входящего сообщения (проверено: кадр 20 МБ принимается). Поэтому сервер сам закрывает соединение с 1009 при > 4096 байт (UTF-8), а от памяти защищают `MemoryMax=192M`, `--max-old-space-size=96`, лимиты соединений и `limit_conn` в Nginx. |
+| `--allow-env=ROOMS_*` | Wildcard работает в Deno 2.9; чтение переменной вне списка даёт `NotCapable`. |
+| faststart | yt-dlp 2026.08.19 добавляет `-movflags +faststart` ко всем выходам своих ffmpeg-постпроцессоров (merge, remux, fixup), поэтому отдельный флаг для watch-заданий не нужен. |
+| Размер тикета | Тикет едет в WS-кадре ≤ 4096 байт: PHP выбрасывает из тикета превью длиннее 1024 символов. Худший случай (200 эмодзи в названии) проверен тестом. |
+| Протокол | Добавлены код ошибки `NO_MEDIA` (команда воспроизведения до выбора видео), системное событие чата `kicked` и close-код **4002** (идентичность открыта в другой вкладке: старая вкладка не переподключается, иначе две вкладки выбивали бы друг друга). На каждый успешный запрос с `reqId` приходит `ack`. |
+| Тексты системных сообщений | Настоящее время и формы без склонения имени («Маша присоединяется к просмотру», «Маша выходит из комнаты», «Ведущий удалил участника Маша», «Ведущий теперь — Маша»): пол по имени не угадываем, падеж имени не меняем. |
+| Рендер | Комната перерисовывается дважды в секунду ради часов плеера. Пересборка списка участников на каждом тике останавливала видеодекодер Chrome (`DECODER_UNDERFLOW`, через 3–7 с после старта при двух участниках, воспроизводилось и в обычном окне). Представления чата и участников теперь рисуют только при изменении входных данных из неизменяемого стора. Слои плеера, которые обновляются поверх видео (чип, бейдж, центральная кнопка), не используют `backdrop-filter`. |
+| Синхронизация (замер) | Два окна Chrome, файловый режим: расхождение после play / pause / seek 0.00–0.09 с, установившееся ±0.013 с на 13 с. YouTube: play/pause одного доходят до другого, название берётся из плеера. Нагрузка локально: 50 комнат × 5 клиентов, p95 рассылки 11 мс, без ошибок и разрывов. |
+
+### Production
+
+- Nginx: `location = /ws/rooms` (Upgrade, `X-Real-IP`, `limit_conn ch_ws 6`, таймауты 120 с), `^~ /api/watch/` с `limit_req ch_watch`, `/watch` и `/watch/{roomId}` → `watch.html` со сниппетом `cliphunter-watch-headers.conf` (CSP с YouTube и `wss://домен`, `Referrer-Policy: strict-origin-when-cross-origin` — без Referer YouTube-embed не играет, ошибка 153). В access-логе `roomId` заменяется на `/watch/:room`.
+- Кэш ассетов: `Cache-Control` берётся из `map $arg_v` — с `?v=<sha>` год и `immutable`, без версии (вложенные ES-модули) `no-cache` с ревалидацией по ETag. Раньше вложенные модули кэшировались на год и после деплоя могли смешаться со старыми.
+- `/_files/` больше не добавляет свой `Cache-Control`: заголовок задаёт PHP (`no-store` для скачиваний, `private, max-age=3600` для файлов комнат, которые `<video>` перечитывает Range-запросами).
+- systemd `cliphunter-rooms.service`: пользователь `cliphunter`, Deno с `--allow-net=127.0.0.1:8790`, `--allow-env` только на нужные переменные, чтение и запись только `storage/rooms`; песочница как у воркера, `MemoryMax=192M`, `CPUQuota=50%`.
+- `deploy.sh`: проверяет `ROOMS_SECRET`; до переключения — `deno check` и `--self-check` от `cliphunter`; после — `/healthz`, CSP страниц `/watch`, 404 для `rooms/main.ts`, `storage/rooms/state.json` и `deno.json`, WS-рукопожатие (101 / 403) и WS-smoke. Откат на релиз без `rooms/` останавливает сервис. Порядок первого выката описан в `README.md`.

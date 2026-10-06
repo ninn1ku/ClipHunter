@@ -14,6 +14,12 @@ DEPLOY_KEY=/root/.ssh/cliphunter_deploy
 PHP=php8.4
 KEEP_RELEASES=3
 ENV_FILE="$APP/shared/.env"
+DENO=/usr/local/bin/deno
+ROOMS_URL=ws://127.0.0.1:8790/ws/rooms
+# The same permissions as deploy/systemd/cliphunter-rooms.service.
+ROOMS_FLAGS=(--quiet --no-prompt --no-config --no-lock --no-remote --no-npm
+    --allow-net=127.0.0.1:8790 '--allow-env=APP_ENV,APP_URL,LOG_LEVEL,STORAGE_PATH,ROOMS_*'
+    "--allow-read=$APP/shared/storage/rooms" "--allow-write=$APP/shared/storage/rooms")
 
 export GIT_SSH_COMMAND="ssh -i $DEPLOY_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 export COMPOSER_ALLOW_SUPERUSER=1 COMPOSER_NO_INTERACTION=1
@@ -30,6 +36,13 @@ WORKERS=$(env_value MAX_CONCURRENT_DOWNLOADS); WORKERS=${WORKERS:-1}
 [[ "$DOMAIN" =~ ^[a-z0-9.-]+$ ]] || die "APP_URL in .env is not valid"
 [[ "$CONTACT_EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[a-z]{2,}$ ]] || die "CONTACT_EMAIL in .env is missing or invalid"
 [[ "$WORKERS" =~ ^[1-9]$ ]] || die "MAX_CONCURRENT_DOWNLOADS must be 1-9"
+[[ "$(env_value ROOMS_SECRET)" =~ ^[a-f0-9]{64,}$ ]] || die "ROOMS_SECRET in .env is missing or not 64+ lowercase hex (openssl rand -hex 32)"
+
+# Runs deno as the app user, with the cache directory the rooms unit uses.
+as_app_deno() {
+    runuser -u cliphunter -- env PATH=/usr/local/bin:/usr/bin:/bin HOME="$APP/shared/storage/cache" \
+        DENO_DIR="$APP/shared/storage/cache/deno-rooms" DENO_NO_UPDATE_CHECK=1 "$DENO" "$@"
+}
 
 restart_services() {
     systemctl reload "${PHP}-fpm"
@@ -37,6 +50,13 @@ restart_services() {
     for i in $(seq 1 "$WORKERS"); do
         systemctl enable --now "cliphunter-worker@$i.service" >/dev/null 2>&1
     done
+    # Releases before watch rooms have no rooms/: a rollback to one stops the service.
+    if [[ -f "$APP/current/rooms/main.ts" ]]; then
+        systemctl enable cliphunter-rooms.service >/dev/null 2>&1
+        systemctl restart cliphunter-rooms.service
+    else
+        systemctl stop cliphunter-rooms.service 2>/dev/null || true
+    fi
 }
 
 switch_to() {
@@ -55,6 +75,43 @@ health_check() {
     done
     sleep 2
     systemctl is-active --quiet cliphunter-worker@1.service || { echo "worker is not running"; return 1; }
+    if [[ -f "$APP/current/rooms/main.ts" ]]; then
+        health_check_rooms || return 1
+    fi
+}
+
+# WebSocket handshake through Nginx; prints the HTTP status. curl keeps an upgraded connection
+# open until --max-time (exit 28), so only the printed code matters.
+ws_handshake() {
+    curl -s -o /dev/null -w '%{http_code}' --http1.1 --max-time 3 -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+        -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H "Origin: $1" \
+        --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/ws/rooms" || true
+}
+
+health_check_rooms() {
+    local base="https://$DOMAIN" code headers path
+    systemctl is-active --quiet cliphunter-rooms.service || { echo "rooms service is not running"; return 1; }
+    local tries=0
+    until curl -fsS --max-time 3 http://127.0.0.1:8790/healthz 2>/dev/null | grep -q '"status":"ok"'; do
+        (( ++tries < 10 )) || { echo "rooms /healthz failed"; return 1; }
+        sleep 1
+    done
+    for path in /watch /watch/ABCDEFGHJKMN; do
+        headers=$(curl -sS -D - -o /dev/null --max-time 10 --resolve "$DOMAIN:443:127.0.0.1" "$base$path")
+        grep -q '^HTTP/[0-9.]* 200' <<<"$headers" || { echo "$path is not 200"; return 1; }
+        grep -qi '^content-security-policy:.*youtube' <<<"$headers" || { echo "$path lacks the watch CSP"; return 1; }
+    done
+    for path in /rooms/main.ts /storage/rooms/state.json /deno.json; do
+        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 --resolve "$DOMAIN:443:127.0.0.1" "$base$path")
+        [[ "$code" == "404" ]] || { echo "$path is exposed (HTTP $code)"; return 1; }
+    done
+    code=$(ws_handshake "https://$DOMAIN")
+    [[ "$code" == "101" ]] || { echo "WebSocket handshake gave $code, expected 101"; return 1; }
+    code=$(ws_handshake "https://evil.example")
+    [[ "$code" == "403" ]] || { echo "foreign Origin gave $code, expected 403"; return 1; }
+    (cd "$APP/current" && as_app_deno run --quiet --no-prompt --no-config --no-lock --no-remote --no-npm \
+        "--env-file=$ENV_FILE" --allow-net=127.0.0.1:8790 --allow-env=APP_ENV,ROOMS_SECRET \
+        "$APP/current/rooms/tools/smoke.ts" "$ROOMS_URL") || { echo "rooms smoke test failed"; return 1; }
 }
 
 if [[ "${1:-}" == "--rollback" ]]; then
@@ -108,6 +165,12 @@ log "Smoke test (as cliphunter)"
 cd "$RELEASE"
 runuser -u cliphunter -- env PATH=/usr/local/bin:/usr/bin:/bin "$PHP" "$RELEASE/bin/smoke.php" \
     || { rm -rf "$RELEASE"; die "smoke test failed; nothing was switched"; }
+if [[ -f "$RELEASE/rooms/main.ts" ]]; then
+    as_app_deno check --quiet --no-config --no-lock "$RELEASE/rooms/main.ts" \
+        || { rm -rf "$RELEASE"; die "rooms type check failed; nothing was switched"; }
+    as_app_deno run "${ROOMS_FLAGS[@]}" "--env-file=$ENV_FILE" "$RELEASE/rooms/main.ts" --self-check \
+        || { rm -rf "$RELEASE"; die "rooms self-check failed; nothing was switched"; }
+fi
 
 log "Switching current -> $SHORT"
 echo "$CURRENT" > "$APP/shared/previous_release"
