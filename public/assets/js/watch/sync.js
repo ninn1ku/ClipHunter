@@ -22,6 +22,7 @@ const SEEK_SEND_INTERVAL_MS = 250;
 const OPTIMISTIC_TTL_MS = 4000;
 const EXTERNAL_SEEK_SEC = 1.0;
 const YOUTUBE_SEEK_GUARD_MS = 2500;
+const CAPTIONS_KEY = 'ch:captions';
 
 /**
  * @typedef {{
@@ -69,6 +70,9 @@ export class SyncController {
     this.pendingSeekTarget = null;
     this.pingTimer = null;
     this.volume = { level: 1, muted: false };
+    this.roomMediaKey = null;
+    /** @type {{base: string, ref: string}|null} */
+    this.variant = null;
     /** @type {SyncStatus} */
     this.status = this.emptyStatus();
     this.ticker = setInterval(() => this.tick(), TICK_MS);
@@ -107,7 +111,12 @@ export class SyncController {
       }
     }
 
-    const media = playable ? state.media : null;
+    let media = playable ? state.media : null;
+    this.roomMediaKey = media === null ? null : `${media.kind}:${media.ref}:${media.setAt}`;
+    // Another quality of the same file, chosen by this member only; dropped when the room's video changes.
+    if (media !== null && this.variant !== null && this.variant.base === this.roomMediaKey) {
+      media = { ...media, ref: this.variant.ref };
+    }
     const key = media === null ? null : `${media.kind}:${media.ref}:${media.setAt}`;
     if (key !== this.mediaKey) {
       this.switchMedia(media, key);
@@ -232,6 +241,73 @@ export class SyncController {
 
   enterNativeFullscreen() {
     return this.adapter?.enterNativeFullscreen?.() ?? false;
+  }
+
+  /** The media id this member is playing (the room's file or a chosen variant of it). */
+  currentRef() {
+    return this.media?.ref ?? null;
+  }
+
+  /**
+   * Plays another prepared variant of the room's file. The player reloads at the room's position;
+   * nothing is sent to the room.
+   * @param {string} ref media id of the variant
+   */
+  useVariant(ref) {
+    if (this.roomMediaKey === null) {
+      return;
+    }
+    this.variant = { base: this.roomMediaKey, ref };
+    this.deps.onChange();
+  }
+
+  // ---------- Captions (YouTube only) ----------
+
+  /** Saved choice: 'off' (default) or a language code. */
+  captionPreference() {
+    try {
+      return localStorage.getItem(CAPTIONS_KEY) ?? 'off';
+    } catch {
+      return 'off';
+    }
+  }
+
+  /** @returns {{tracks: Array<{code: string, label: string}>, active: string|null}|null} null when unsupported */
+  captions() {
+    return this.adapter?.getCaptions?.() ?? null;
+  }
+
+  /** @returns {Promise<Array<{code: string, label: string}>>} */
+  loadCaptions() {
+    return this.adapter?.loadCaptions?.() ?? Promise.resolve([]);
+  }
+
+  /** @param {string|null} code */
+  setCaptions(code) {
+    try {
+      localStorage.setItem(CAPTIONS_KEY, code ?? 'off');
+    } catch {
+      // The choice simply is not remembered.
+    }
+    this.adapter?.setCaptions?.(code);
+    setTimeout(() => this.refreshStatus(), 300);
+  }
+
+  /**
+   * Applies the saved choice when the player loads and whenever YouTube loads its captions module
+   * by itself (uploader defaults, language settings). Throttled: unloading the module can fire
+   * the same event again.
+   */
+  applyCaptionPreference() {
+    const adapter = this.adapter;
+    const now = Date.now();
+    if (adapter?.kind !== 'youtube' || now - (this.captionsAppliedAt ?? 0) < 2000) {
+      return;
+    }
+    this.captionsAppliedAt = now;
+    const wanted = this.captionPreference();
+    adapter.setCaptions(wanted === 'off' ? null : wanted);
+    this.refreshStatus();
   }
 
   // ---------- Core ----------
@@ -429,6 +505,7 @@ export class SyncController {
     adapter.on('playing', () => this.onBuffering(false));
     adapter.on('ended', () => this.refreshStatus());
     adapter.on('error', ({ code }) => this.onPlayerError(code));
+    adapter.on('captions', () => this.applyCaptionPreference());
 
     const playback = this.effective();
     const startSec = playback === null
@@ -441,6 +518,8 @@ export class SyncController {
       adapter.setVolume(this.volume.level);
       adapter.setMuted(this.volume.muted);
       this.status.ready = true;
+      this.captionsAppliedAt = 0;
+      this.applyCaptionPreference();
       if (this.status.overlay === 'loading') {
         this.status.overlay = null;
       }
@@ -555,6 +634,7 @@ export class SyncController {
       s.position = adapter.getCurrentTime();
       s.duration = this.duration();
       s.title = adapter.getTitle?.() ?? null;
+      s.captions = adapter.kind === 'youtube' ? (adapter.getCaptions?.().active ?? null) : undefined;
       if (!(s.overlay !== null && typeof s.overlay === 'object')) {
         s.overlay = this.autoplayBlocked ? 'autoplay' : this.atEnd() && playback !== null ? 'ended' : null;
       }
@@ -593,6 +673,7 @@ export class SyncController {
 
   /** Leaves the room: drop the player and all room state, keep the controller usable. */
   reset() {
+    this.variant = null;
     this.stopPings();
     this.destroyAdapter();
     this.mediaKey = null;

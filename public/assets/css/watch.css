@@ -693,11 +693,11 @@
 }
 
 /* While playing, controls fade out after a few idle seconds (never while focused). */
-.player[data-playing="true"][data-active="false"]:not(:focus-within) .player__ui {
+.player[data-playing="true"][data-active="false"]:not(:has(.player__ui :focus-visible)) .player__ui {
   opacity: 0;
 }
 
-.player[data-playing="true"][data-active="false"]:not(:focus-within) {
+.player[data-playing="true"][data-active="false"]:not(:has(.player__ui :focus-visible)) {
   cursor: none;
 }
 
@@ -947,8 +947,77 @@
   opacity: 0.5;
 }
 
-.player__settings {
+.player__popup {
   position: relative;
+}
+
+/* Catches pointer movement and clicks over the video, including over the YouTube iframe. */
+.player__surface {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: auto;
+}
+
+.player__top,
+.player__center,
+.player__bar {
+  position: relative;
+  z-index: 1;
+}
+
+.player__btn[data-on="true"] {
+  color: #b0a7ff;
+}
+
+.player__menu-label {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  color: var(--color-text-subtle);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.player__menu-note {
+  padding: 0 var(--space-3) var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.player__menu-sep {
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: var(--color-border);
+}
+
+.player__menu .player__choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.player__choice-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: #b0a7ff;
+}
+
+.player__choice-mark svg {
+  width: 16px;
+  height: 16px;
+}
+
+.player__choice-note {
+  margin-left: auto;
+  padding-left: var(--space-3);
+  color: var(--color-text-subtle);
+  font-size: var(--text-xs);
+  white-space: nowrap;
 }
 
 .player__menu {
@@ -956,7 +1025,9 @@
   right: 0;
   bottom: calc(100% + var(--space-2));
   z-index: 5;
-  min-width: 230px;
+  min-width: 240px;
+  max-height: min(70vh, 360px);
+  overflow-y: auto;
   margin: 0;
   padding: 6px;
   border: 1px solid var(--color-border-strong);

@@ -41,6 +41,11 @@ export class YouTubePlayerAdapter {
     this.mount = mount;
     this.player = null;
     this.ready = false;
+    /** Language code we switched captions on with; null while they are off. */
+    this.captionCode = null;
+    /** @type {Array<{code: string, label: string}>} */
+    this.captionTracks = [];
+    this.listingCaptions = false;
     /** @type {Map<string, Set<Function>>} */
     this.listeners = new Map();
   }
@@ -94,6 +99,12 @@ export class YouTubePlayerAdapter {
             resolve();
           },
           onStateChange: (event) => this.stateChanged(event.data),
+          // Fires when a module such as captions loads (YouTube may load captions by itself).
+          onApiChange: () => {
+            if (!this.listingCaptions) {
+              this.emit('captions');
+            }
+          },
           onError: (event) => {
             const code = `YT_${event.data}`;
             this.emit('error', { code });
@@ -193,6 +204,75 @@ export class YouTubePlayerAdapter {
 
   setRate() {
     // Not used: YouTube is corrected by seeking.
+  }
+
+  /**
+   * Captions. The API cannot tell whether captions are shown (getOption('captions', 'track')
+   * keeps returning the default track), so the adapter remembers what it switched on itself.
+   * Verified: loadModule + setOption(track) shows captions, unloadModule hides them.
+   * @returns {{tracks: Array<{code: string, label: string}>, active: string|null}}
+   */
+  getCaptions() {
+    return { tracks: this.captionTracks, active: this.captionCode };
+  }
+
+  /**
+   * Resolves the available tracks. The list exists only while the captions module is loaded, so
+   * with captions off the module is loaded for a moment and unloaded again.
+   * @returns {Promise<Array<{code: string, label: string}>>}
+   */
+  async loadCaptions() {
+    if (this.captionTracks.length > 0 || this.player === null) {
+      return this.captionTracks;
+    }
+    this.listingCaptions = true;
+    try {
+      this.player.loadModule?.('captions');
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      this.captionTracks = this.readTracks();
+      if (this.captionCode === null) {
+        this.player?.unloadModule?.('captions');
+      }
+    } catch {
+      // Captions are best effort.
+    } finally {
+      setTimeout(() => {
+        this.listingCaptions = false;
+      }, 1000);
+    }
+
+    return this.captionTracks;
+  }
+
+  readTracks() {
+    try {
+      const list = this.player?.getOption?.('captions', 'tracklist');
+      return Array.isArray(list)
+        ? list
+          .filter((t) => typeof t?.languageCode === 'string')
+          .map((t) => ({
+            code: t.languageCode,
+            label: String(t.displayName ?? t.languageName ?? t.languageCode),
+          }))
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** @param {string|null} code language code, or null to turn captions off */
+  setCaptions(code) {
+    this.captionCode = code;
+    try {
+      if (code === null) {
+        this.player?.unloadModule?.('captions');
+      } else {
+        this.player?.loadModule?.('captions');
+        this.player?.setOption?.('captions', 'track', { languageCode: code });
+      }
+    } catch {
+      // Ignore: captions are best effort.
+    }
   }
 
   enterNativeFullscreen() {

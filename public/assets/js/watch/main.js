@@ -1,5 +1,7 @@
 // Watch rooms entry point: routing (/watch, /watch/{roomId}) and wiring of store, session and views.
 
+import { api } from '../api.js';
+import { formatBytes } from '../format.js';
 import { MediaWatcher } from './media.js';
 import { Html5PlayerAdapter } from './players/html5.js';
 import { YouTubePlayerAdapter } from './players/youtube.js';
@@ -15,12 +17,14 @@ import { HeaderView } from './views/header.js';
 import { NameDialog } from './views/join-dialog.js';
 import { ParticipantsView } from './views/participants.js';
 import { PlayerView, stageKind } from './views/player.js';
-import { resolveSource, SourceDialog } from './views/source-dialog.js';
+import { resolveSource, SourceDialog, sourceErrorText } from './views/source-dialog.js';
 import { StartView } from './views/start.js';
 import { Toasts } from './views/toast.js';
 
 const ROOM_PATH = /^\/watch\/([0-9A-HJKMNP-TV-Z]{12})\/?$/;
 const FATAL_JOIN = { ROOM_FULL: 'full', KICKED: 'kicked', ROOM_NOT_FOUND: 'not_found' };
+/** Tells the server a room file is still watched, so its idle cleanup does not remove it. */
+const KEEPALIVE_MS = 5 * 60_000;
 
 const $ = (id) => /** @type {any} */ (document.getElementById(id));
 
@@ -123,7 +127,13 @@ class WatchApp {
     this.controls = new PlayerControls($('player'), this.sync, {
       isHost: () => isHost(this.store.state),
       changeMedia: () => this.sourceDialog.open(),
+      quality: () => this.qualityMenu(),
+      selectQuality: (optionId) => void this.selectQuality(optionId),
     });
+    /** @type {{ref: string, list: any[]|null, loading: boolean}|null} */
+    this.variants = null;
+    this.pendingVariant = null;
+    setInterval(() => this.keepAlive(), KEEPALIVE_MS);
     this.media = new MediaWatcher((status) => {
       this.preparation = status;
       this.scheduleRender();
@@ -293,6 +303,133 @@ class WatchApp {
 
   setMedia(ticket) {
     return this.request({ type: 'media.set', ticket });
+  }
+
+  // ---------- Quality (file mode, per member) ----------
+
+  /** @returns {import('./views/controls.js').QualityMenu|null} */
+  qualityMenu() {
+    const media = this.store.state.media;
+    if (media === null) {
+      return null;
+    }
+    if (media.kind === 'youtube') {
+      return {
+        current: null,
+        options: [],
+        note: 'У YouTube качество выбирает сам плеер — по скорости сети и размеру окна.',
+      };
+    }
+    void this.loadVariants(media.ref);
+    const list = this.variants?.ref === media.ref ? this.variants.list : null;
+    if (list === null) {
+      return { current: null, options: [], note: 'Загружаем варианты качества…' };
+    }
+    const playing = this.sync.currentRef();
+    const current = list.find((v) => v.mediaId !== null && v.mediaId === playing)?.optionId ?? null;
+
+    return {
+      current,
+      note: 'Меняется только у вас.',
+      options: list.map((v) => ({ id: v.optionId, label: v.label, note: this.variantNote(v) })),
+    };
+  }
+
+  variantNote(variant) {
+    if (this.pendingVariant?.optionId === variant.optionId) {
+      return 'готовится…';
+    }
+    switch (variant.status) {
+      case 'ready':
+        return 'готово';
+      case 'preparing':
+        return variant.percent === null ? 'готовится' : `готовится ${Math.floor(variant.percent)} %`;
+      case 'queued':
+        return 'в очереди';
+      default:
+        return variant.sizeBytes === null ? 'подготовить' : `≈ ${formatBytes(variant.sizeBytes)}`;
+    }
+  }
+
+  /** The variant list of the room's file (fetched once per video, refreshed when the menu opens). */
+  async loadVariants(ref) {
+    if (this.variants?.ref === ref && this.variants.loading) {
+      return;
+    }
+    const keep = this.variants?.ref === ref ? this.variants.list : null;
+    this.variants = { ref, list: keep, loading: true };
+    try {
+      const { variants } = await api('GET', `/api/watch/media/${ref}/variants`, null, { timeoutMs: 10000 });
+      if (this.variants?.ref === ref) {
+        this.variants = { ref, list: variants, loading: false };
+      }
+    } catch {
+      if (this.variants?.ref === ref) {
+        this.variants = { ref, list: keep, loading: false };
+      }
+    }
+  }
+
+  async selectQuality(optionId) {
+    const media = this.store.state.media;
+    if (media?.kind !== 'file') {
+      return;
+    }
+    const label = this.variants?.list?.find((v) => v.optionId === optionId)?.label ?? optionId;
+    let status;
+    try {
+      status = await api('POST', `/api/watch/media/${media.ref}/variants`, { optionId }, {
+        timeoutMs: 20000,
+      });
+    } catch (e) {
+      this.toasts.show(sourceErrorText(e), { kind: 'error' });
+      return;
+    }
+    if (status.status === 'ready') {
+      this.sync.useVariant(status.mediaId);
+      this.toasts.show(`Качество: ${label}`);
+      return;
+    }
+    if (status.status === 'failed' || status.status === 'expired') {
+      this.toasts.show(`Не удалось подготовить ${label}.`, { kind: 'error' });
+      return;
+    }
+    this.toasts.show(`Готовим ${label} — переключим автоматически, когда будет готово.`);
+    this.pendingVariant = { optionId, mediaId: status.mediaId, base: media.ref, label };
+    void this.waitForVariant(this.pendingVariant);
+  }
+
+  async waitForVariant(pending) {
+    while (this.pendingVariant === pending && this.store.state.media?.ref === pending.base) {
+      await new Promise((resolve) => setTimeout(resolve, 2000 + Math.random() * 600));
+      let status;
+      try {
+        status = await api('GET', `/api/watch/media/${pending.mediaId}`, null, { timeoutMs: 10000 });
+      } catch {
+        continue;
+      }
+      if (this.pendingVariant !== pending) {
+        return;
+      }
+      if (status.status === 'ready') {
+        this.pendingVariant = null;
+        this.sync.useVariant(pending.mediaId);
+        this.toasts.show(`Качество: ${pending.label}`);
+        return;
+      }
+      if (status.status === 'failed' || status.status === 'expired') {
+        this.pendingVariant = null;
+        this.toasts.show(`Не удалось подготовить ${pending.label}.`, { kind: 'error' });
+        return;
+      }
+    }
+  }
+
+  keepAlive() {
+    const ref = this.sync.currentRef();
+    if (this.store.state.media?.kind === 'file' && ref !== null && this.session !== null) {
+      void api('GET', `/api/watch/media/${ref}`, null, { timeoutMs: 10000 }).catch(() => {});
+    }
   }
 
   roomUrl() {
