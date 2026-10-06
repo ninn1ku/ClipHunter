@@ -86,6 +86,31 @@ export function decideCorrection({ drift, player, frozen = false, rateCorrecting
   return rateCorrecting ? { action: 'rate', rate: 1 } : { action: 'none' };
 }
 
+/** A playing player whose position has not moved for this long is stalled (an ad, buffering). */
+export const STALL_MS = 1000;
+
+/**
+ * Tracks when the player's position last moved. Pure: returns the new state.
+ * @param {{position: number, at: number}|null} motion
+ * @param {number} position
+ * @param {number} now ms
+ */
+export function trackMotion(motion, position, now) {
+  return motion === null || Math.abs(position - motion.position) > 0.05 ? { position, at: now } : motion;
+}
+
+/**
+ * Whether a player that should be playing is stuck: an embedded player showing an ad or
+ * buffering reports "playing" while its position stands still. Seeking it then only restarts
+ * its loading, so corrections wait until it moves again. Pure.
+ * @param {{position: number, at: number}|null} motion
+ * @param {boolean} playing the player is supposed to be playing
+ * @param {number} now ms
+ */
+export function isStalled(motion, playing, now) {
+  return playing && motion !== null && now - motion.at > STALL_MS;
+}
+
 /** How long an ignored seek is not repeated: the platform is busy (an ad, loading). */
 export const SEEK_RETRY_MS = 8000;
 

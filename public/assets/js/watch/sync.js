@@ -17,9 +17,11 @@ import {
   expectedPosition,
   inSyncWindow,
   isAtEnd,
+  isStalled,
   PRECISE_PLAYER,
   SEEK_FREEZE_MS,
   seekIgnored,
+  trackMotion,
 } from './playback.js';
 
 const TICK_MS = 500;
@@ -71,6 +73,8 @@ export class SyncController {
     this.rateCorrecting = false;
     /** @type {{at: number, from: number, to: number}|null} the last correcting seek */
     this.lastSeek = null;
+    /** @type {{position: number, at: number}|null} when the player's position last moved */
+    this.motion = null;
     this.lastDrift = 0;
     this.lastCheck = 0;
     this.autoplayBlocked = false;
@@ -404,6 +408,8 @@ export class SyncController {
     const position = adapter.getCurrentTime();
     const drift = position - expected;
     this.lastDrift = drift;
+    this.motion = trackMotion(this.motion, position, now);
+    const stalled = isStalled(this.motion, shouldPlay && adapter.isPlaying(), now);
     const decision = hardSeek && Math.abs(drift) > 0.05 ? { action: 'seek' } : decideCorrection({
       drift,
       player: adapter.capabilities,
@@ -411,8 +417,8 @@ export class SyncController {
       rateCorrecting: this.rateCorrecting,
     });
 
-    if (decision.action === 'seek' && !hardSeek && seekIgnored(this.lastSeek, position, now)) {
-      // The platform has not honoured our last seek (an ad, still loading): wait for it.
+    if (decision.action === 'seek' && !hardSeek && (stalled || seekIgnored(this.lastSeek, position, now))) {
+      // The player is stuck (an ad, buffering) or ignored our last seek: wait for it to move.
       this.frozenUntil = now + SEEK_FREEZE_MS;
     } else if (decision.action === 'seek') {
       this.lastSeek = { at: now, from: position, to: expected };
@@ -730,6 +736,7 @@ export class SyncController {
     this.pendingSeekTarget = null;
     this.rateCorrecting = false;
     this.lastSeek = null;
+    this.motion = null;
     this.autoplayBlocked = false;
     this.reportedBuffering = false;
     this.frozenUntil = 0;

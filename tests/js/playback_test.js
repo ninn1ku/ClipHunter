@@ -69,3 +69,16 @@ Deno.test('a seek the player ignored is not repeated for a while', async () => {
   assert.ok(!seekIgnored(null, 121.3, 3000));
   assert.ok(!seekIgnored({ at: 1000, from: 50, to: 50.5 }, 50, 2000), 'tiny seeks are not judged');
 });
+
+Deno.test('a playing player whose position stands still is stalled', async () => {
+  const { isStalled, trackMotion, STALL_MS } = await import('../../public/assets/js/watch/playback.js');
+  let motion = trackMotion(null, 120, 0);
+  motion = trackMotion(motion, 120.02, 500);
+  assert.equal(motion.at, 0, 'jitter is not movement');
+  assert.ok(!isStalled(motion, true, STALL_MS), 'not yet');
+  assert.ok(isStalled(motion, true, STALL_MS + 1), 'an ad or buffering');
+  assert.ok(!isStalled(motion, false, 10_000), 'paused players are not stalled');
+  motion = trackMotion(motion, 121, 3000);
+  assert.ok(!isStalled(motion, true, 3500), 'moving again');
+  assert.ok(!isStalled(null, true, 10_000));
+});
