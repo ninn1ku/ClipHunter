@@ -630,7 +630,9 @@ class WatchApp {
     this.player.render(
       state,
       this.preparation,
-      status.nativeControls && (status.overlay === 'autoplay' || status.overlay === 'loading') ? null : status.overlay,
+      status.nativeControls && (status.overlay === 'autoplay' || status.overlay === 'loading')
+        ? null
+        : status.overlay,
     );
     this.renderSyncNote(status, state.connection);
     this.episodes.render(state);
