@@ -12,7 +12,8 @@ import { sourceErrorText } from './source-dialog.js';
 export class PlayerView {
   /**
    * @param {{player: HTMLElement, mount: HTMLElement, poster: HTMLElement, overlay: HTMLElement}} elements
-   * @param {{chooseSource: (url: string) => Promise<void>, openSourceDialog: () => void}} actions
+   * @param {{chooseSource: (url: string) => Promise<void>, openSourceDialog: () => void,
+   *   prepareOnServer: () => Promise<void>, unlockAutoplay: () => void, replay: () => void}} actions
    */
   constructor(elements, actions) {
     this.el = elements;
@@ -25,9 +26,10 @@ export class PlayerView {
   /**
    * @param {import('../store.js').RoomState} state
    * @param {{status: string, percent: number|null, queuePosition: number|null, error: any}|null} preparation
+   * @param {any} [syncOverlay] what the player itself needs to show (SyncStatus.overlay)
    * @returns {StageKind}
    */
-  render(state, preparation) {
+  render(state, preparation, syncOverlay = null) {
     const media = state.media;
     const host = state.me !== null && state.me === state.hostId;
     const kind = stageKind(media, preparation);
@@ -35,13 +37,16 @@ export class PlayerView {
     this.el.player.dataset.state = kind;
     this.setPoster(media?.thumbnailUrl ?? null);
 
-    const key = `${kind}:${host}:${media?.ref ?? ''}:${
-      kind === 'failed' ? preparation?.error?.code ?? '' : ''
-    }`;
+    const sync = kind === 'ready' ? syncOverlay : null;
+    const syncKey = sync === null ? '' : typeof sync === 'object' ? `error:${sync.error}` : sync;
+    const failure = kind === 'failed' ? preparation?.error?.code ?? '' : '';
+    const key = `${kind}:${host}:${media?.ref ?? ''}:${failure}:${syncKey}`;
     if (key !== this.key) {
       this.key = key;
       this.progress = null;
-      this.el.overlay.replaceChildren(...this.overlay(kind, host, preparation));
+      this.el.overlay.replaceChildren(
+        ...(kind === 'ready' ? this.syncOverlay(sync, host, media) : this.overlay(kind, host, preparation)),
+      );
     }
     if (kind === 'preparing' && this.progress !== null) {
       this.updateProgress(preparation);
@@ -125,6 +130,111 @@ export class PlayerView {
       default:
         return [];
     }
+  }
+
+  /** Overlays while media is playable: loading, autoplay blocked, finished, player errors. */
+  syncOverlay(overlay, host, media) {
+    if (overlay === null) {
+      return [];
+    }
+    if (overlay === 'loading') {
+      return [
+        el('span', { className: 'spinner spinner--lg', attrs: { 'aria-hidden': 'true' } }),
+        el('span', { className: 'visually-hidden', text: 'Загружаем плеер…' }),
+      ];
+    }
+    if (overlay === 'autoplay') {
+      return [
+        el(
+          'button',
+          {
+            className: 'stage-cta',
+            attrs: { type: 'button' },
+            on: { click: () => this.actions.unlockAutoplay() },
+          },
+          el('span', { className: 'stage-cta__icon', attrs: { 'aria-hidden': 'true' } }, icon('play')),
+          el('span', { text: 'Нажмите, чтобы смотреть вместе' }),
+        ),
+      ];
+    }
+    if (overlay === 'ended') {
+      return [
+        el(
+          'div',
+          { className: 'stage-card stage-card--glass' },
+          el('p', { className: 'stage-card__title', text: 'Видео закончилось' }),
+          el(
+            'button',
+            {
+              className: 'btn btn--primary btn--sm',
+              attrs: { type: 'button' },
+              on: { click: () => this.actions.replay() },
+            },
+            icon('replay'),
+            el('span', { text: 'Смотреть заново' }),
+          ),
+        ),
+      ];
+    }
+
+    const code = overlay.error;
+    const embedBlocked = code === 'YT_101' || code === 'YT_150';
+    const texts = {
+      YT_100: 'Видео недоступно: его удалили или сделали приватным.',
+      YT_101: 'Владелец запретил показывать это видео на других сайтах.',
+      YT_150: 'Владелец запретил показывать это видео на других сайтах.',
+      YT_153: 'Плеер YouTube не получил адрес страницы. Обновите страницу.',
+      YT_API_UNAVAILABLE: 'Не удалось загрузить плеер YouTube. Проверьте, не блокирует ли его браузер.',
+      MEDIA_UNSUPPORTED: 'Браузер не может воспроизвести этот файл.',
+    };
+    let action;
+    if (host && embedBlocked && media?.kind === 'youtube') {
+      const button = el(
+        'button',
+        { className: 'btn btn--primary btn--sm', attrs: { type: 'button' } },
+        el('span', { className: 'spinner', attrs: { 'aria-hidden': 'true' } }),
+        el('span', { className: 'btn__label', text: 'Подготовить через сервер' }),
+      );
+      const error = el('p', { className: 'w-field-error', attrs: { 'aria-live': 'polite' } });
+      button.addEventListener('click', async () => {
+        setBusy(button, true, 'Готовим…');
+        try {
+          await this.actions.prepareOnServer();
+        } catch (e) {
+          error.textContent = sourceErrorText(e);
+          setBusy(button, false, 'Подготовить через сервер');
+        }
+      });
+      action = el('div', { className: 'stage-card__actions' }, button, error);
+    } else if (host) {
+      action = el('button', {
+        className: 'btn btn--secondary btn--sm',
+        text: 'Выбрать другое видео',
+        attrs: { type: 'button' },
+        on: { click: () => this.actions.openSourceDialog() },
+      });
+    } else {
+      action = el('p', {
+        className: 'stage-card__text',
+        text: embedBlocked
+          ? 'Ведущий может подготовить видео через наш сервер.'
+          : 'Ведущий может выбрать другое видео.',
+      });
+    }
+
+    return [
+      el(
+        'div',
+        { className: 'stage-card stage-card--glass' },
+        el('span', {
+          className: 'stage-card__icon stage-card__icon--error',
+          attrs: { 'aria-hidden': 'true' },
+        }, icon('alert')),
+        el('p', { className: 'stage-card__title', text: 'Видео не воспроизводится' }),
+        el('p', { className: 'stage-card__text', text: texts[code] ?? 'Не удалось воспроизвести видео.' }),
+        action,
+      ),
+    ];
   }
 
   updateProgress(preparation) {

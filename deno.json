@@ -23,7 +23,7 @@
     }
   },
   "test": {
-    "include": ["rooms/tests/"]
+    "include": ["rooms/tests/", "tests/js/"]
   },
   "tasks": {
     "dev": "deno run --watch --no-prompt --allow-net=127.0.0.1 --allow-env --allow-read=storage/rooms --allow-write=storage/rooms rooms/main.ts",

@@ -29,7 +29,9 @@ $fail = static function (string $message): never {
 };
 
 if (!in_array('--dump-single-json', $args, true)) {
-    download($args, $scenario, dirname(__DIR__) . '/fixtures/media', $fail);
+    // FAKE_YTDLP_MEDIA_DIR lets local end-to-end runs serve a longer clip than the tiny fixtures.
+    $mediaDir = getenv('FAKE_YTDLP_MEDIA_DIR');
+    download($args, $scenario, is_string($mediaDir) && $mediaDir !== '' ? $mediaDir : dirname(__DIR__) . '/fixtures/media', $fail);
 }
 
 /**

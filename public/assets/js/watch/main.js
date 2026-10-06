@@ -1,16 +1,20 @@
 // Watch rooms entry point: routing (/watch, /watch/{roomId}) and wiring of store, session and views.
 
 import { MediaWatcher } from './media.js';
+import { Html5PlayerAdapter } from './players/html5.js';
+import { YouTubePlayerAdapter } from './players/youtube.js';
+import { SyncController } from './sync.js';
 import { roomErrorText, TERMINAL_SCREENS } from './messages.js';
 import { RoomError } from './room-client.js';
 import { identityStore, RoomSession } from './session.js';
 import { isHost, Store } from './store.js';
 import { participantsLabel } from './text.js';
 import { ChatView } from './views/chat.js';
+import { PlayerControls } from './views/controls.js';
 import { HeaderView } from './views/header.js';
 import { NameDialog } from './views/join-dialog.js';
 import { ParticipantsView } from './views/participants.js';
-import { PlayerView } from './views/player.js';
+import { PlayerView, stageKind } from './views/player.js';
 import { resolveSource, SourceDialog } from './views/source-dialog.js';
 import { StartView } from './views/start.js';
 import { Toasts } from './views/toast.js';
@@ -93,6 +97,32 @@ class WatchApp {
         await this.setMedia(ticket);
       },
       openSourceDialog: () => this.sourceDialog.open(),
+      prepareOnServer: async () => {
+        const media = this.store.state.media;
+        if (media?.kind !== 'youtube') {
+          return;
+        }
+        // Embedding is disabled for this video: let our server prepare the file instead.
+        const { ticket } = await resolveSource(`https://www.youtube.com/watch?v=${media.ref}`, 'file');
+        await this.setMedia(ticket);
+      },
+      unlockAutoplay: () => this.sync.unlockAutoplay(),
+      replay: () => this.sync.replay(),
+    });
+    this.sync = new SyncController({
+      request: (message) => this.request(message),
+      send: (message) => this.session?.send(message) ?? false,
+      mount: $('player-mount'),
+      createAdapter: (
+        kind,
+        mount,
+      ) => (kind === 'youtube' ? new YouTubePlayerAdapter(mount) : new Html5PlayerAdapter(mount)),
+      onChange: () => this.scheduleRender(),
+      onError: (code) => this.toasts.show(roomErrorText(code), { kind: 'error' }),
+    });
+    this.controls = new PlayerControls($('player'), this.sync, {
+      isHost: () => isHost(this.store.state),
+      changeMedia: () => this.sourceDialog.open(),
     });
     this.media = new MediaWatcher((status) => {
       this.preparation = status;
@@ -136,6 +166,7 @@ class WatchApp {
   }
 
   showStart() {
+    this.sync.reset();
     this.media.stop();
     this.preparation = null;
     this.showView('start');
@@ -149,6 +180,7 @@ class WatchApp {
     for (const dialog of document.querySelectorAll('dialog[open]')) {
       dialog.close();
     }
+    this.sync.reset();
     this.media.stop();
     if (this.session !== null && this.session.phase !== 'terminated') {
       this.session.close();
@@ -171,7 +203,8 @@ class WatchApp {
         this.showScreen(event.detail.screen);
       }
     });
-    session.addEventListener('joined', () => {
+    session.addEventListener('joined', (event) => {
+      this.sync.seedClock(event.detail.serverTime);
       $('room').classList.remove('is-locked');
       this.announce('Вы в комнате');
     });
@@ -395,20 +428,26 @@ class WatchApp {
     this.header.render(state);
     this.chat.render(state);
     this.participants.render(state);
-    this.player.render(state, this.preparation);
+    const kind = stageKind(media, this.preparation);
+    this.sync.update(state, kind === 'ready');
+    this.player.render(state, this.preparation, this.sync.status.overlay);
+    const title = media === null
+      ? 'Видео ещё не выбрано'
+      : media.title ?? this.sync.status.title ?? (media.kind === 'youtube' ? 'Видео с YouTube' : 'Видео');
+    this.controls.render(state, this.sync.status, title);
 
     const count = participantsLabel(state.participants.length);
     $('people-summary').textContent = count;
     $('tab-people-count').textContent = `${state.participants.length}/${state.capacity}`;
-    $('media-title').textContent = media === null
-      ? 'Видео ещё не выбрано'
-      : media.title ?? (media.kind === 'youtube' ? 'Видео с YouTube' : 'Видео');
+    if ($('media-title').textContent !== title) {
+      $('media-title').textContent = title;
+    }
     $('media-platform').textContent = media === null
       ? 'Комната для совместного просмотра'
       : `Сейчас смотрим вместе · ${media.platform}`;
     $('change-media').hidden = !(isHost(state) && media !== null);
     $('conn-banner').hidden = state.connection !== 'reconnecting';
-    document.title = `${media?.title ?? 'Комната'} — Смотреть вместе — ClipHunter`;
+    document.title = `${media === null ? 'Комната' : title} — Смотреть вместе — ClipHunter`;
   }
 }
 
