@@ -21,6 +21,36 @@ final class MediaTicketTest extends TestCase
         self::assertSame($fixture['ticket'], (new MediaTicket($fixture['secret']))->sign($fixture['payload']));
     }
 
+    public function testSignsTheContractExamplesOfBrowserPlayedKinds(): void
+    {
+        $fixture = self::fixture();
+        $tickets = new MediaTicket($fixture['secret']);
+
+        foreach ($fixture['examples'] as $example) {
+            self::assertSame($example['ticket'], $tickets->sign($example['payload']));
+            ['kind' => $kind, 'ref' => $ref] = $example['payload'];
+            self::assertIsString($kind);
+            self::assertIsString($ref);
+            self::assertMatchesRegularExpression(WatchSourceKind::from($kind)->refPattern(), $ref);
+        }
+    }
+
+    public function testRefPatternsMatchTheContractSharedWithTheRoomsService(): void
+    {
+        $refs = self::fixture()['refs'];
+
+        self::assertEqualsCanonicalizing(array_map(static fn (WatchSourceKind $k): string => $k->value, WatchSourceKind::cases()), array_keys($refs));
+        foreach ($refs as $kind => $cases) {
+            $pattern = WatchSourceKind::from($kind)->refPattern();
+            foreach ($cases['valid'] as $ref) {
+                self::assertMatchesRegularExpression($pattern, $ref, "$kind: $ref");
+            }
+            foreach ($cases['invalid'] as $ref) {
+                self::assertDoesNotMatchRegularExpression($pattern, $ref, "$kind: $ref");
+            }
+        }
+    }
+
     public function testIssuedTicketCarriesTheSourceAndExpiresInTenMinutes(): void
     {
         $secret = str_repeat('ab', 32);
@@ -77,11 +107,13 @@ final class MediaTicketTest extends TestCase
     }
 
     /**
-     * @return array{secret: string, payload: array<string, mixed>, ticket: string}
+     * @return array{secret: string, payload: array<string, mixed>, ticket: string,
+     *   refs: array<string, array{valid: list<string>, invalid: list<string>}>,
+     *   examples: list<array{payload: array<string, mixed>, ticket: string}>}
      */
     private static function fixture(): array
     {
-        /** @var array{secret: string, payload: array<string, mixed>, ticket: string} */
+        /** @var array{secret: string, payload: array<string, mixed>, ticket: string, refs: array<string, array{valid: list<string>, invalid: list<string>}>, examples: list<array{payload: array<string, mixed>, ticket: string}>} */
         return json_decode((string) file_get_contents(self::FIXTURE), true, 16, JSON_THROW_ON_ERROR);
     }
 

@@ -80,3 +80,48 @@ Deno.test('malformed rooms are skipped, valid ones kept', () =>
     assert.equal(log.entries[0]?.event, 'snapshot.rooms_skipped');
     assert.equal(log.entries[0]?.count, 3);
   }));
+
+Deno.test('media of every kind round-trips; a ref that does not fit its kind is dropped', () =>
+  withDir(async (dir) => {
+    const clock = new FakeClock();
+    const registry = new RoomRegistry(LIMITS, clock);
+    const media = [
+      { kind: 'vk', ref: '-22822305_456241864' },
+      { kind: 'twitch', ref: 'video:2345678901' },
+      { kind: 'twitch', ref: 'channel:shroud' },
+      { kind: 'aniliberty', ref: '10335:a2eaa868-41e2-486d-81f0-c2f124f82803' },
+    ] as const;
+    const ids: string[] = [];
+    for (const { kind, ref } of media) {
+      const room = registry.create();
+      assert.ok(room);
+      const joined = room.join('Маша', 'aaaaaaaaaaaaaaaa', clock.now());
+      assert.ok(joined.ok);
+      const set = room.setMedia(joined.participant.id, {
+        kind,
+        ref,
+        platform: 'Test',
+        title: null,
+        durationSec: null,
+        thumbnailUrl: null,
+        startSec: 0,
+      }, clock.now());
+      assert.ok(set.ok);
+      ids.push(room.id);
+    }
+    const states = registry.toStates() as unknown as Array<{ media: { ref: string } | null }>;
+    // A tampered snapshot: a VK ref in a Twitch room.
+    states.push({ ...states[1]!, id: 'ZZZZZZZZZZZZ', media: { ...states[1]!.media!, ref: '-1_1' } } as never);
+    await Deno.writeTextFile(
+      `${dir}/${SNAPSHOT_FILE}`,
+      JSON.stringify({ version: 1, savedAt: 0, rooms: states }),
+    );
+
+    const restored = new RoomRegistry(LIMITS, clock);
+    assert.equal(restored.restore(await readSnapshot(dir, memoryLogger())), media.length);
+    media.forEach(({ kind, ref }, i) => {
+      const back = restored.get(ids[i]!);
+      assert.equal(back?.media?.kind, kind);
+      assert.equal(back?.media?.ref, ref);
+    });
+  }));

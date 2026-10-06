@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import { base64url } from '../src/security/ids.ts';
-import { TicketVerifier } from '../src/security/ticket.ts';
+import { isValidRef, type MediaKind, REF_PATTERN, TicketVerifier } from '../src/security/ticket.ts';
 
 const fixture = JSON.parse(
   await Deno.readTextFile(new URL('../../tests/fixtures/watch/ticket-v1.json', import.meta.url)),
-) as { secret: string; payload: Record<string, unknown>; ticket: string };
+) as {
+  secret: string;
+  payload: Record<string, unknown>;
+  ticket: string;
+  refs: Record<string, { valid: string[]; invalid: string[] }>;
+  examples: Array<{ payload: Record<string, unknown>; ticket: string }>;
+};
 
 const SECRET = 'ab'.repeat(32);
 const NOW = 1_800_000_000;
@@ -52,6 +58,44 @@ Deno.test('accepts the ticket PHP produced for the contract fixture', async () =
     thumbnailUrl: fixture.payload.thumbnailUrl,
     startSec: fixture.payload.startSec,
   });
+});
+
+Deno.test('accepts the contract examples of browser-played kinds', async () => {
+  const verifier = new TicketVerifier(fixture.secret);
+  for (const example of fixture.examples) {
+    const result = await verifier.verify(example.ticket, (example.payload.exp as number) - 300);
+    assert.ok(result.ok, `${example.payload.kind}: ${JSON.stringify(result)}`);
+    assert.equal(result.media.kind, example.payload.kind);
+    assert.equal(result.media.ref, example.payload.ref);
+    assert.equal(result.media.startSec, example.payload.startSec);
+  }
+});
+
+Deno.test('ref patterns match the contract shared with PHP', () => {
+  assert.deepEqual(Object.keys(fixture.refs).sort(), Object.keys(REF_PATTERN).sort());
+  for (const [kind, cases] of Object.entries(fixture.refs)) {
+    for (const ref of cases.valid) {
+      assert.ok(isValidRef(kind as MediaKind, ref), `${kind}: ${ref}`);
+    }
+    for (const ref of cases.invalid) {
+      assert.ok(!isValidRef(kind as MediaKind, ref), `${kind}: ${ref}`);
+    }
+  }
+});
+
+Deno.test('rejects a ref of another kind', async () => {
+  const verifier = new TicketVerifier(SECRET);
+  const cases: Array<Record<string, unknown>> = [
+    { kind: 'vk', ref: 'video:2345678901' },
+    { kind: 'twitch', ref: '-22822305_456241864' },
+    { kind: 'aniliberty', ref: 'dQw4w9WgXcQ' },
+    { kind: 'twitch', ref: 'clip:AwkwardHelplessSalamander' },
+    { kind: 'rutube', ref: 'abc' },
+  ];
+  for (const overrides of cases) {
+    const result = await verifier.verify(await sign(payload(overrides)), NOW);
+    assert.ok(!result.ok && result.code === 'INVALID_TICKET', JSON.stringify(overrides));
+  }
 });
 
 Deno.test('accepts a valid ticket of either kind', async () => {

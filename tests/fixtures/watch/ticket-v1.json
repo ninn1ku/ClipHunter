@@ -12,5 +12,131 @@
         "startSec": 0,
         "exp": 1791234567
     },
-    "ticket": "eyJ2IjoxLCJraW5kIjoiZmlsZSIsInJlZiI6IjlmMWMyYjNhNGQ1ZTZmNzA4MTkyYTNiNGM1ZDZlN2Y4IiwicGxhdGZvcm0iOiLQktCa0L7QvdGC0LDQutGC0LUiLCJ0aXRsZSI6ItCa0L7RgiAmIMKr0L_RkdGBwrsg4oCUIFwi0YLQtdGB0YJcIiDwn46sIDwvc2NyaXB0PiIsImR1cmF0aW9uU2VjIjoyMTMsInRodW1ibmFpbFVybCI6Imh0dHBzOi8vc3VuOS0xLnVzZXJhcGkuY29tL2ltcGcvYS9iLmpwZz9zaXplPTMyMHgyNDAmcXVhbGl0eT05NiIsInN0YXJ0U2VjIjowLCJleHAiOjE3OTEyMzQ1Njd9.W_Srs7HWu5iyhsly6B0Ix02X4mU2oXfn81eOISi5ntA"
+    "ticket": "eyJ2IjoxLCJraW5kIjoiZmlsZSIsInJlZiI6IjlmMWMyYjNhNGQ1ZTZmNzA4MTkyYTNiNGM1ZDZlN2Y4IiwicGxhdGZvcm0iOiLQktCa0L7QvdGC0LDQutGC0LUiLCJ0aXRsZSI6ItCa0L7RgiAmIMKr0L_RkdGBwrsg4oCUIFwi0YLQtdGB0YJcIiDwn46sIDwvc2NyaXB0PiIsImR1cmF0aW9uU2VjIjoyMTMsInRodW1ibmFpbFVybCI6Imh0dHBzOi8vc3VuOS0xLnVzZXJhcGkuY29tL2ltcGcvYS9iLmpwZz9zaXplPTMyMHgyNDAmcXVhbGl0eT05NiIsInN0YXJ0U2VjIjowLCJleHAiOjE3OTEyMzQ1Njd9.W_Srs7HWu5iyhsly6B0Ix02X4mU2oXfn81eOISi5ntA",
+    "refs": {
+        "youtube": {
+            "valid": [
+                "dQw4w9WgXcQ",
+                "a_b-C1d2E3f"
+            ],
+            "invalid": [
+                "short",
+                "dQw4w9WgXcQ1",
+                "dQw4w9WgXc!"
+            ]
+        },
+        "vk": {
+            "valid": [
+                "-22822305_456241864",
+                "1_1",
+                "123456789_987654321"
+            ],
+            "invalid": [
+                "0_1",
+                "-0_1",
+                "1_0",
+                "-1_-1",
+                "1-1",
+                "-22822305_456241864_abc",
+                "1_1?hash=x"
+            ]
+        },
+        "twitch": {
+            "valid": [
+                "video:2345678901",
+                "channel:shroud",
+                "channel:a_b_c"
+            ],
+            "invalid": [
+                "video:0",
+                "video:12a",
+                "channel:ab",
+                "channel:Shroud",
+                "channel:_abc",
+                "clip:FunnyClip",
+                "2345678901",
+                "channel:aaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+        },
+        "aniliberty": {
+            "valid": [
+                "10335:a2eaa868-41e2-486d-81f0-c2f124f82803"
+            ],
+            "invalid": [
+                "10335",
+                "0:a2eaa868-41e2-486d-81f0-c2f124f82803",
+                "10335:A2EAA868-41E2-486D-81F0-C2F124F82803",
+                "10335:a2eaa868-41e2-486d-81f0",
+                "gensou-suikoden:a2eaa868-41e2-486d-81f0-c2f124f82803"
+            ]
+        },
+        "file": {
+            "valid": [
+                "9f1c2b3a4d5e6f708192a3b4c5d6e7f8"
+            ],
+            "invalid": [
+                "9F1C2B3A4D5E6F708192A3B4C5D6E7F8",
+                "../../etc/passwd",
+                "dQw4w9WgXcQ"
+            ]
+        }
+    },
+    "examples": [
+        {
+            "payload": {
+                "v": 1,
+                "kind": "vk",
+                "ref": "-22822305_456241864",
+                "platform": "ВКонтакте",
+                "title": null,
+                "durationSec": null,
+                "thumbnailUrl": null,
+                "startSec": 90,
+                "exp": 1791234567
+            },
+            "ticket": "eyJ2IjoxLCJraW5kIjoidmsiLCJyZWYiOiItMjI4MjIzMDVfNDU2MjQxODY0IiwicGxhdGZvcm0iOiLQktCa0L7QvdGC0LDQutGC0LUiLCJ0aXRsZSI6bnVsbCwiZHVyYXRpb25TZWMiOm51bGwsInRodW1ibmFpbFVybCI6bnVsbCwic3RhcnRTZWMiOjkwLCJleHAiOjE3OTEyMzQ1Njd9.xe_Ay2zaUIXhX99eDPKqePtp9ja61C9xWQ8SxPG_tFM"
+        },
+        {
+            "payload": {
+                "v": 1,
+                "kind": "twitch",
+                "ref": "video:2345678901",
+                "platform": "Twitch",
+                "title": null,
+                "durationSec": null,
+                "thumbnailUrl": null,
+                "startSec": 3723,
+                "exp": 1791234567
+            },
+            "ticket": "eyJ2IjoxLCJraW5kIjoidHdpdGNoIiwicmVmIjoidmlkZW86MjM0NTY3ODkwMSIsInBsYXRmb3JtIjoiVHdpdGNoIiwidGl0bGUiOm51bGwsImR1cmF0aW9uU2VjIjpudWxsLCJ0aHVtYm5haWxVcmwiOm51bGwsInN0YXJ0U2VjIjozNzIzLCJleHAiOjE3OTEyMzQ1Njd9.ANiAaXzsKK6dsODxhWumD_7hqaZi5qga-P0Phl8Kx3o"
+        },
+        {
+            "payload": {
+                "v": 1,
+                "kind": "twitch",
+                "ref": "channel:shroud",
+                "platform": "Twitch",
+                "title": null,
+                "durationSec": null,
+                "thumbnailUrl": null,
+                "startSec": 0,
+                "exp": 1791234567
+            },
+            "ticket": "eyJ2IjoxLCJraW5kIjoidHdpdGNoIiwicmVmIjoiY2hhbm5lbDpzaHJvdWQiLCJwbGF0Zm9ybSI6IlR3aXRjaCIsInRpdGxlIjpudWxsLCJkdXJhdGlvblNlYyI6bnVsbCwidGh1bWJuYWlsVXJsIjpudWxsLCJzdGFydFNlYyI6MCwiZXhwIjoxNzkxMjM0NTY3fQ.8HTNcJ550odHuxgxPrm9RDev4-i0yfGA1QG4YWQ5_7A"
+        },
+        {
+            "payload": {
+                "v": 1,
+                "kind": "aniliberty",
+                "ref": "10335:a2eaa868-41e2-486d-81f0-c2f124f82803",
+                "platform": "AniLiberty",
+                "title": "Гэнсо Суйкоден — серия 1",
+                "durationSec": 3029,
+                "thumbnailUrl": "https://aniliberty.top/storage/releases/episodes/previews/10335/1/x0GtZy4nWRp7V6M6.jpg",
+                "startSec": 0,
+                "exp": 1791234567
+            },
+            "ticket": "eyJ2IjoxLCJraW5kIjoiYW5pbGliZXJ0eSIsInJlZiI6IjEwMzM1OmEyZWFhODY4LTQxZTItNDg2ZC04MWYwLWMyZjEyNGY4MjgwMyIsInBsYXRmb3JtIjoiQW5pTGliZXJ0eSIsInRpdGxlIjoi0JPRjdC90YHQviDQodGD0LnQutC-0LTQtdC9IOKAlCDRgdC10YDQuNGPIDEiLCJkdXJhdGlvblNlYyI6MzAyOSwidGh1bWJuYWlsVXJsIjoiaHR0cHM6Ly9hbmlsaWJlcnR5LnRvcC9zdG9yYWdlL3JlbGVhc2VzL2VwaXNvZGVzL3ByZXZpZXdzLzEwMzM1LzEveDBHdFp5NG5XUnA3VjZNNi5qcGciLCJzdGFydFNlYyI6MCwiZXhwIjoxNzkxMjM0NTY3fQ.UkivqSMiYjh9JK1BlVejYSCWYxtORMc5ub9h6_EJJac"
+        }
+    ]
 }

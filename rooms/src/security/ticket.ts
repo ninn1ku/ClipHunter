@@ -10,7 +10,11 @@
 import { sanitizeTitle } from '../domain/text.ts';
 import { base64urlDecode, hexToBytes } from './ids.ts';
 
-export type MediaKind = 'youtube' | 'file';
+/**
+ * youtube, vk, twitch and aniliberty play in the browser straight from the platform; file is
+ * prepared by our worker and streamed from our server.
+ */
+export type MediaKind = 'youtube' | 'vk' | 'twitch' | 'aniliberty' | 'file';
 
 export interface TicketMedia {
   kind: MediaKind;
@@ -33,10 +37,29 @@ export const MAX_TICKET_LIFETIME_SEC = 900;
 const MAX_DURATION_SEC = 172_800;
 const MAX_START_SEC = 86_400;
 
-const REF_PATTERN: Record<MediaKind, RegExp> = {
+/**
+ * Tickets carry identifiers only, never URLs (the frame limit is 4096 bytes). Pinned by
+ * tests/fixtures/watch/ticket-v1.json, which PHP checks against WatchSourceKind::refPattern().
+ */
+export const REF_PATTERN: Readonly<Record<MediaKind, RegExp>> = {
   youtube: /^[A-Za-z0-9_-]{11}$/,
+  /** owner_id_video_id; owner ids of communities are negative. */
+  vk: /^-?[1-9][0-9]{0,18}_[1-9][0-9]{0,18}$/,
+  /** A recording (video:<id>) or a channel's live stream (channel:<login>). */
+  twitch: /^(?:video:[1-9][0-9]{0,14}|channel:[a-z0-9][a-z0-9_]{2,24})$/,
+  /** release_id:episode_uuid */
+  aniliberty: /^[1-9][0-9]{0,9}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
   file: /^[a-f0-9]{32}$/,
 };
+
+export function isMediaKind(value: unknown): value is MediaKind {
+  return typeof value === 'string' && Object.hasOwn(REF_PATTERN, value);
+}
+
+/** Whether ref is a well-formed identifier for the kind. */
+export function isValidRef(kind: MediaKind, ref: unknown): ref is string {
+  return typeof ref === 'string' && REF_PATTERN[kind].test(ref);
+}
 
 export class TicketVerifier {
   private readonly key: Promise<CryptoKey>;
@@ -111,9 +134,7 @@ export class TicketVerifier {
 
 function parseMedia(p: Record<string, unknown>): TicketMedia | null {
   const kind = p.kind;
-  if (
-    (kind !== 'youtube' && kind !== 'file') || typeof p.ref !== 'string' || !REF_PATTERN[kind].test(p.ref)
-  ) {
+  if (!isMediaKind(kind) || !isValidRef(kind, p.ref)) {
     return null;
   }
   if (typeof p.platform !== 'string' || p.platform.length < 1 || p.platform.length > 64) {

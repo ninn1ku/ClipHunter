@@ -10,6 +10,7 @@ import type { Logger } from '../log.ts';
 import type { ChatMessage, Media, Participant, RoomState } from '../domain/room.ts';
 import type { Playback } from '../domain/playback.ts';
 import { PARTICIPANT_ID_PATTERN, ROOM_ID_PATTERN } from '../security/ids.ts';
+import { isMediaKind, isValidRef } from '../security/ticket.ts';
 
 export const SNAPSHOT_VERSION = 1;
 export const SNAPSHOT_FILE = 'state.json';
@@ -166,7 +167,7 @@ function parsePlayback(v: unknown): Playback | null {
 
 /** undefined when invalid (null is a valid "no media"). */
 function parseMedia(v: unknown): Media | undefined {
-  if (!isObject(v) || (v.kind !== 'youtube' && v.kind !== 'file') || typeof v.ref !== 'string') {
+  if (!isObject(v) || !isMediaKind(v.kind) || !isValidRef(v.kind, v.ref)) {
     return undefined;
   }
   if (typeof v.platform !== 'string' || !isInt(v.startSec) || !isInt(v.setAt)) {
