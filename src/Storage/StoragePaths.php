@@ -32,6 +32,12 @@ final readonly class StoragePaths
         }
     }
 
+    /** Written by the rooms service: media ids of prepared files in non-empty rooms. */
+    public function roomsMediaInUseFile(): string
+    {
+        return $this->root . '/rooms/media-in-use.json';
+    }
+
     public function analysisFile(string $id): string
     {
         return $this->root . '/analyses/' . self::id($id) . '.json';

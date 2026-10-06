@@ -149,7 +149,7 @@ final readonly class AppConfig
             watchMaxHeight: $reader->int('WATCH_MAX_HEIGHT', 1080, 144, 2160),
             watchDefaultHeight: $reader->int('WATCH_DEFAULT_HEIGHT', 720, 144, 2160),
             watchFileRetentionSec: $reader->int('WATCH_FILE_RETENTION_MIN', 360, 30, 1_440) * 60,
-            watchIdleTtlSec: $reader->int('WATCH_IDLE_TTL_MIN', 30, 5, 1_440) * 60,
+            watchIdleTtlSec: $reader->int('WATCH_IDLE_TTL_MIN', 10, 2, 1_440) * 60,
             watchSourcesRateLimit: RateLimitRule::fromString($reader->string('RATE_LIMIT_WATCH_SOURCES', '20/3600')),
         );
     }

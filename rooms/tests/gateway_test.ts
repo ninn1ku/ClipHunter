@@ -414,6 +414,35 @@ test('frames over 4096 bytes close the socket with 1009', async (h) => {
   assert.equal((await client.closed).code, 1009);
 });
 
+test('files of non-empty rooms are published for the PHP cleaner', async (h) => {
+  const ref = 'f'.repeat(32);
+  const client = await h.connect();
+  const ticket = await h.ticket({
+    kind: 'file',
+    ref,
+    platform: 'ВКонтакте',
+    title: 'Фильм',
+    durationSec: 7200,
+  });
+  assert.equal((await client.request({ type: 'room.create', name: 'Маша', ticket })).type, 'welcome');
+  const read = async (): Promise<{ updatedAt: number; refs: string[] }> =>
+    JSON.parse(await Deno.readTextFile(`${h.config.snapshotDir}/media-in-use.json`));
+
+  await h.gateway.publishMediaInUse(true);
+  assert.deepEqual((await read()).refs, [ref]);
+  assert.equal((await read()).updatedAt, h.clock.now());
+
+  // A participant in the reconnect grace period still needs the file.
+  await client.close();
+  await h.gateway.publishMediaInUse(true);
+  assert.deepEqual((await read()).refs, [ref]);
+
+  h.clock.advance(h.config.reconnectGraceMs);
+  h.gateway.sweep();
+  await h.gateway.publishMediaInUse(true);
+  assert.deepEqual((await read()).refs, [], 'everyone left: the file may go');
+});
+
 test('stop waits until clients got 1012, so a shutdown right after cannot cut them off', async (h) => {
   const host = await createRoom(h);
   let closedCode = 0;

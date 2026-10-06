@@ -16,7 +16,9 @@ use Psr\Log\LoggerInterface;
 /**
  * Retention policy (run every few minutes by a systemd timer):
  *  - finished files are deleted FILE_RETENTION_MIN after completion (job becomes "expired");
- *  - watch-room files are also deleted once nobody has used them for WATCH_IDLE_TTL_MIN;
+ *  - watch-room files are kept while a non-empty room plays them (the rooms service lists them
+ *    in storage/rooms/media-in-use.json), together with every other variant of the same video;
+ *    otherwise they are deleted once nobody has used them for WATCH_IDLE_TTL_MIN;
  *  - job records are deleted JOB_TTL_HOURS after creation;
  *  - jobs whose worker died are failed and their temp files removed;
  *  - orphaned tmp/download directories, expired analyses and rate-limit windows are removed.
@@ -26,6 +28,8 @@ final readonly class Cleaner
     /** Grace period before an unowned directory or running marker is considered abandoned. */
     private const ORPHAN_AGE_SEC = 600;
     private const STALE_RUNNING_AGE_SEC = 60;
+    /** Older lists mean the rooms service is down: fall back to the idle rule. */
+    private const IN_USE_MAX_AGE_SEC = 180;
 
     public function __construct(
         private JobRepository $jobs,
@@ -58,6 +62,7 @@ final readonly class Cleaner
             $stats['stale_jobs']++;
         }
 
+        $inUseUrls = $this->urlsInUse($now);
         $known = [];
         foreach ($this->jobs->allIds() as $id) {
             $job = $this->jobs->find($id);
@@ -66,6 +71,15 @@ final readonly class Cleaner
                     $this->jobs->delete($id);
                     $stats['deleted_jobs']++;
                 }
+                continue;
+            }
+
+            if ($job->purpose === JobPurpose::Watch && $job->status === JobStatus::Completed && isset($inUseUrls[$job->url])) {
+                // A room is watching this video: keep the file and push its deadlines forward.
+                $job->lastAccessAt = $now;
+                $job->expiresAt = max($job->expiresAt ?? 0, $now + $this->config->watchIdleTtlSec);
+                $this->jobs->save($job);
+                $known[$id] = $job->status;
                 continue;
             }
 
@@ -107,6 +121,31 @@ final readonly class Cleaner
         }
 
         return $stats;
+    }
+
+    /**
+     * Video URLs of the files listed by the rooms service, if its list is fresh.
+     *
+     * @return array<string, true>
+     */
+    private function urlsInUse(int $now): array
+    {
+        $data = AtomicFile::readJson($this->paths->roomsMediaInUseFile());
+        $updatedAt = is_array($data) && is_int($data['updatedAt'] ?? null) ? intdiv($data['updatedAt'], 1000) : null;
+        $refs = is_array($data) && is_array($data['refs'] ?? null) ? $data['refs'] : [];
+        if ($updatedAt === null || $now - $updatedAt > self::IN_USE_MAX_AGE_SEC) {
+            return [];
+        }
+
+        $urls = [];
+        foreach ($refs as $ref) {
+            $job = is_string($ref) && Ids::isValid($ref) ? $this->jobs->find($ref) : null;
+            if ($job !== null && $job->purpose === JobPurpose::Watch) {
+                $urls[$job->url] = true;
+            }
+        }
+
+        return $urls;
     }
 
     /**

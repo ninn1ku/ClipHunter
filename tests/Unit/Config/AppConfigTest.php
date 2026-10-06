@@ -34,7 +34,7 @@ final class AppConfigTest extends TestCase
         self::assertSame(1080, $config->watchMaxHeight);
         self::assertSame(720, $config->watchDefaultHeight);
         self::assertSame(360 * 60, $config->watchFileRetentionSec);
-        self::assertSame(30 * 60, $config->watchIdleTtlSec);
+        self::assertSame(10 * 60, $config->watchIdleTtlSec);
         self::assertSame(20, $config->watchSourcesRateLimit->limit);
         self::assertSame(3600, $config->watchSourcesRateLimit->windowSec);
     }

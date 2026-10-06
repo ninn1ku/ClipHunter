@@ -144,15 +144,15 @@ final class WatchMediaFlowTest extends TestCase
         $cleaner = $app->container->get(Cleaner::class);
         $paths = $app->container->get(StoragePaths::class);
 
-        // Members keep polling (keep-alive) every 20 minutes: the idle timeout never fires.
-        for ($minute = 20; $minute <= 340; $minute += 20) {
-            $app->clock->advance(20 * 60);
+        // Members keep polling (keep-alive) every 5 minutes: the idle timeout never fires.
+        for ($minute = 5; $minute <= 355; $minute += 5) {
+            $app->clock->advance(5 * 60);
             self::assertSame('ready', $this->mediaStatus($app, $mediaId)['status'], "minute $minute");
             $cleaner->run();
         }
         self::assertFileExists($paths->downloadDir($mediaId) . '/media.mp4', 'past FILE_RETENTION_MIN for downloads');
 
-        $app->clock->advance(21 * 60); // 361 minutes in total, past WATCH_FILE_RETENTION_MIN=360
+        $app->clock->advance(6 * 60); // 361 minutes in total, past WATCH_FILE_RETENTION_MIN=360
         self::assertSame('expired', $this->mediaStatus($app, $mediaId)['status'], 'expired even before the cleaner runs');
         $stats = $cleaner->run();
 
@@ -170,11 +170,11 @@ final class WatchMediaFlowTest extends TestCase
         $cleaner = $app->container->get(Cleaner::class);
         $paths = $app->container->get(StoragePaths::class);
 
-        $app->clock->advance(29 * 60);
+        $app->clock->advance(9 * 60);
         $cleaner->run();
         self::assertFileExists($paths->downloadDir($mediaId) . '/media.mp4');
 
-        $app->clock->advance(2 * 60); // 31 minutes without a status poll or a file request
+        $app->clock->advance(2 * 60); // 11 minutes without a status poll or a file request (WATCH_IDLE_TTL_MIN=10)
         $stats = $cleaner->run();
 
         self::assertSame(1, $stats['expired_files']);
@@ -189,12 +189,57 @@ final class WatchMediaFlowTest extends TestCase
         $mediaId = $app->queueWatchMedia();
         $app->runQueuedJobs();
 
-        $app->clock->advance(25 * 60);
+        $app->clock->advance(8 * 60);
         $app->request('GET', '/api/watch/media/' . $mediaId . '/file', headers: ['Range' => 'bytes=0-9']);
-        $app->clock->advance(25 * 60);
+        $app->clock->advance(8 * 60);
         $app->container->get(Cleaner::class)->run();
 
         self::assertFileExists($app->container->get(StoragePaths::class)->downloadDir($mediaId) . '/media.mp4');
+    }
+
+    public function testFilesOfOccupiedRoomsAreKeptWithoutAnyKeepAlive(): void
+    {
+        $app = new TestApp();
+        $app->clock->now = time();
+        $mediaId = $app->queueWatchMedia(); // 240p, with 144p as the other variant
+        $variant = TestApp::decode($app->request('POST', '/api/watch/media/' . $mediaId . '/variants', ['optionId' => 'v144'], ['Origin' => TestApp::APP_URL]))['mediaId'];
+        self::assertIsString($variant);
+        $app->runQueuedJobs();
+        $cleaner = $app->container->get(Cleaner::class);
+        $paths = $app->container->get(StoragePaths::class);
+
+        // Six hours of a room playing the 240p file, with nobody polling: the rooms service list keeps both variants.
+        for ($minute = 5; $minute <= 360; $minute += 5) {
+            $app->clock->advance(5 * 60);
+            $this->publishInUse($app, [$mediaId]);
+            $cleaner->run();
+        }
+        self::assertFileExists($paths->downloadDir($mediaId) . '/media.mp4');
+        self::assertFileExists($paths->downloadDir($variant) . '/media.mp4', 'every variant of a watched video stays');
+        self::assertSame('ready', $this->mediaStatus($app, $mediaId)['status'], 'past WATCH_FILE_RETENTION_MIN as well');
+
+        // Everyone left: the id drops out of the list, and the idle timeout applies again.
+        $this->publishInUse($app, []);
+        $app->clock->advance(11 * 60);
+        $this->publishInUse($app, []);
+        $cleaner->run();
+
+        self::assertDirectoryDoesNotExist($paths->downloadDir($mediaId));
+        self::assertDirectoryDoesNotExist($paths->downloadDir($variant));
+    }
+
+    public function testAStaleListFromTheRoomsServiceIsIgnored(): void
+    {
+        $app = new TestApp();
+        $app->clock->now = time();
+        $mediaId = $app->queueWatchMedia();
+        $app->runQueuedJobs();
+        $this->publishInUse($app, [$mediaId]);
+
+        $app->clock->advance(11 * 60); // the rooms service stopped writing 11 minutes ago
+        $app->container->get(Cleaner::class)->run();
+
+        self::assertDirectoryDoesNotExist($app->container->get(StoragePaths::class)->downloadDir($mediaId));
     }
 
     public function testMembersCanPrepareAnotherQualityOnce(): void
@@ -229,6 +274,20 @@ final class WatchMediaFlowTest extends TestCase
         self::assertIsArray($listed);
         self::assertSame([null, $mediaId, $variantId, null], array_column($listed, 'mediaId'), 'any variant lists them all');
         self::assertSame(404, $app->request('GET', '/api/watch/media/' . str_repeat('a', 32) . '/variants')->getStatusCode());
+    }
+
+    /**
+     * Writes storage/rooms/media-in-use.json like the rooms service does.
+     *
+     * @param list<string> $refs
+     */
+    private function publishInUse(TestApp $app, array $refs): void
+    {
+        $file = $app->container->get(StoragePaths::class)->roomsMediaInUseFile();
+        if (!is_dir(dirname($file))) {
+            mkdir(dirname($file), 0700, true);
+        }
+        file_put_contents($file, json_encode(['version' => 1, 'updatedAt' => $app->clock->now * 1000, 'refs' => $refs], JSON_THROW_ON_ERROR));
     }
 
     /**

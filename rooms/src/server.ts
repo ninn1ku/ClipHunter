@@ -15,6 +15,7 @@ import { Connection, type Hub } from './connection.ts';
 import { RoomRegistry } from './domain/registry.ts';
 import type { Room, RoomEvent } from './domain/room.ts';
 import { type Logger, roomTag } from './log.ts';
+import { mediaInUse, writeMediaInUse } from './persistence/media-in-use.ts';
 import { readSnapshot, writeSnapshot } from './persistence/snapshot.ts';
 import { CLOSE } from './protocol.ts';
 import { ipHasher } from './security/ids.ts';
@@ -26,6 +27,9 @@ const SWEEP_INTERVAL_MS = 15_000;
 const SNAPSHOT_INTERVAL_MS = 10_000;
 const IDLE_TIMEOUT_SEC = 30;
 const STOP_DRAIN_MS = 2000;
+const IN_USE_INTERVAL_MS = 30_000;
+/** The list is rewritten at least this often even unchanged, as a sign of life for the PHP cleaner. */
+const IN_USE_HEARTBEAT_MS = 60_000;
 
 export class Gateway implements Hub {
   readonly registry: RoomRegistry;
@@ -41,6 +45,8 @@ export class Gateway implements Hub {
   private timers: ReturnType<typeof setInterval>[] = [];
   private stopping = false;
   private saving: Promise<void> = Promise.resolve();
+  private inUseKey: string | null = null;
+  private inUseWrittenAt = 0;
 
   constructor(
     readonly config: Config,
@@ -82,7 +88,9 @@ export class Gateway implements Hub {
     this.timers.push(
       setInterval(() => this.sweep(), SWEEP_INTERVAL_MS),
       setInterval(() => void this.saveSnapshot(), SNAPSHOT_INTERVAL_MS),
+      setInterval(() => void this.publishMediaInUse(), IN_USE_INTERVAL_MS),
     );
+    void this.publishMediaInUse(true);
   }
 
   /** Snapshot, then close every socket with 1012 so clients reconnect to the next process. */
@@ -98,6 +106,8 @@ export class Gateway implements Hub {
     await this.saving;
     this.registry.dirty = true;
     await this.saveSnapshot(true);
+    // Rooms survive the restart, and so must their files: refresh the list one last time.
+    await this.publishMediaInUse(true);
     for (const connection of this.connections) {
       connection.close(CLOSE.restart, 'service restarting');
     }
@@ -222,6 +232,26 @@ export class Gateway implements Hub {
     }
     this.createLimiter.sweep();
     this.joinLimiter.sweep();
+  }
+
+  /**
+   * Tells the PHP cleaner which prepared files are in use (see persistence/media-in-use.ts).
+   * Written when the set changes, and at least once a minute.
+   */
+  async publishMediaInUse(force = false): Promise<void> {
+    const refs = mediaInUse(this.registry.all());
+    const key = refs.join(',');
+    const now = this.clock.now();
+    if (!force && key === this.inUseKey && now - this.inUseWrittenAt < IN_USE_HEARTBEAT_MS) {
+      return;
+    }
+    try {
+      await writeMediaInUse(this.config.snapshotDir, refs, now);
+      this.inUseKey = key;
+      this.inUseWrittenAt = now;
+    } catch (e) {
+      this.log.error('media_in_use.failed', { error: e instanceof Error ? e.name : 'unknown' });
+    }
   }
 
   async saveSnapshot(force = false): Promise<void> {
