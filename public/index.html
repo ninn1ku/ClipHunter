@@ -33,6 +33,7 @@
           <li><a class="nav__link" href="#platforms">Поддерживаемые платформы</a></li>
           <li><a class="nav__link" href="#features">Преимущества</a></li>
           <li><a class="nav__link" href="#faq">Вопросы</a></li>
+          <li><a class="nav__link nav__link--accent" href="/watch">Смотреть вместе</a></li>
         </ul>
       </nav>
     </div>
@@ -125,6 +126,22 @@
       </div>
     </section>
 
+    <section class="section" id="together" aria-labelledby="together-title">
+      <div class="container">
+        <div class="promo">
+          <div class="promo__text">
+            <span class="badge">Новое: совместный просмотр</span>
+            <h2 id="together-title">Смотрите видео вместе с друзьями</h2>
+            <p>Создайте комнату, отправьте ссылку — и видео пойдёт синхронно у всех: пауза и перемотка у одного видны у каждого. Есть чат. До 5 человек, без регистрации.</p>
+          </div>
+          <a class="btn btn--primary" href="/watch">
+            <svg class="btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2a4.5 4.5 0 0 1 5 4.8"/></svg>
+            <span>Создать комнату</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
     <section class="section" id="platforms" aria-labelledby="platforms-title">
       <div class="container">
         <div class="section__head">
@@ -194,6 +211,10 @@
             <p>Скачивайте только то, на что у вас есть права: свои ролики, видео под открытой лицензией или с разрешения автора. ClipHunter не обходит защиту, платный доступ и приватность — такие видео скачать не получится.</p>
           </details>
           <details>
+            <summary>Можно ли смотреть видео вместе с друзьями?</summary>
+            <p>Да: откройте <a href="/watch">«Смотреть вместе»</a>, создайте комнату и отправьте ссылку. Видео с YouTube играет во встроенном плеере YouTube, с других площадок — готовится на нашем сервере (до 720p, файл хранится 6 часов). В комнате до 5 человек, пауза и перемотка у всех одновременно.</p>
+          </details>
+          <details>
             <summary>Почему не получается скачать?</summary>
             <p>Проверьте, что ссылка ведёт на конкретное видео и оно открыто без входа в аккаунт. Иногда площадки временно ограничивают доступ — тогда стоит попробовать позже.</p>
           </details>
@@ -214,6 +235,7 @@
             <li><a href="#how">Как это работает</a></li>
             <li><a href="#platforms">Платформы</a></li>
             <li><a href="#faq">Вопросы</a></li>
+            <li><a href="/watch">Смотреть вместе</a></li>
             <li><a href="/terms.html">Условия</a></li>
             <li><a href="/privacy.html">Конфиденциальность</a></li>
             <li><a href="/abuse.html">Жалобы</a></li>
@@ -269,6 +291,10 @@
           <svg class="btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>
           <span>Скачать файл</span>
         </button>
+        <a class="btn btn--secondary" data-slot="watch-link" href="/watch">
+          <svg class="btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2a4.5 4.5 0 0 1 5 4.8"/></svg>
+          <span>Смотреть вместе</span>
+        </a>
         <button class="btn btn--ghost" type="button" data-action="reset">Другое видео</button>
       </div>
     </form>

@@ -124,6 +124,10 @@ export class App {
     const options = this.analysis.options;
     const preselected = PREFERRED_OPTIONS.find((id) => options.some((o) => o.id === id)) ?? options[0]?.id;
     renderOptions(this.body, options, preselected, (optionId, submit) => this.download(optionId, submit));
+    const watch = this.body.querySelector('[data-slot="watch-link"]');
+    if (watch) {
+      watch.href = `/watch?url=${encodeURIComponent(this.analysis.video.webpageUrl)}`;
+    }
   }
 
   // ---------- Download ----------
