@@ -81,9 +81,11 @@ id cliphunter >/dev/null 2>&1 || useradd --system --home-dir "$APP" --no-create-
 usermod -a -G cliphunter www-data
 install -d -o root -g root -m 755 "$APP" "$APP/releases" "$APP/shared" /var/www/certbot
 install -d -o cliphunter -g cliphunter -m 2750 "$APP/shared/storage"
-for d in analyses jobs jobs/queue jobs/running tmp downloads ratelimit locks cache cache/yt-dlp cache/deno cache/deno-rooms rooms logs; do
+for d in analyses jobs jobs/queue jobs/running tmp downloads ratelimit locks cache cache/yt-dlp cache/deno cache/deno-rooms logs; do
     install -d -o cliphunter -g cliphunter -m 2750 "$APP/shared/storage/$d"
 done
+# Room snapshots hold names, chat and token hashes: not even the group (www-data) may read them.
+install -d -o cliphunter -g cliphunter -m 0700 "$APP/shared/storage/rooms"
 
 log "PHP configuration"
 install -m 644 "$SRC/php/99-cliphunter.ini" "/etc/php/${PHP}/fpm/conf.d/99-cliphunter.ini"
