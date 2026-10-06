@@ -130,7 +130,8 @@ export class SyncController {
     }
     const key = media === null ? null : `${media.kind}:${media.ref}:${media.setAt}`;
     if (key !== this.mediaKey) {
-      this.switchMedia(media, key);
+      // The room's playback belongs to the new media already; ours may still be the old video's.
+      this.switchMedia(media, key, state.playback);
     }
 
     if (state.playback !== null && (this.server === null || state.playback.seq !== this.server.seq)) {
@@ -514,7 +515,12 @@ export class SyncController {
 
   // ---------- Player events ----------
 
-  switchMedia(media, key) {
+  /**
+   * @param {any} media
+   * @param {string|null} key
+   * @param {import('./store.js').Playback|null} [roomPlayback] the room's state for this media
+   */
+  switchMedia(media, key, roomPlayback = null) {
     this.destroyAdapter();
     this.mediaKey = key;
     this.media = media;
@@ -542,8 +548,9 @@ export class SyncController {
     adapter.on('ended', () => this.refreshStatus());
     adapter.on('error', ({ code }) => this.onPlayerError(code));
     adapter.on('captions', () => this.applyCaptionPreference());
+    adapter.on('ad', () => this.refreshStatus());
 
-    const playback = this.effective();
+    const playback = roomPlayback ?? this.effective();
     const startSec = playback === null
       ? media.startSec
       : expectedPosition(playback, this.serverNow(), media.durationSec);
