@@ -6,6 +6,9 @@ namespace ClipHunter\Watch;
 
 use ClipHunter\Analysis\Analysis;
 use ClipHunter\Analysis\AnalyzeService;
+use ClipHunter\AniLiberty\AniLibertyClient;
+use ClipHunter\AniLiberty\AniLibertyLink;
+use ClipHunter\AniLiberty\AniLibertyService;
 use ClipHunter\Config\AppConfig;
 use ClipHunter\Exception\ApiException;
 use ClipHunter\Exception\ErrorCode;
@@ -21,7 +24,9 @@ use Psr\Log\LoggerInterface;
  * POST /api/watch/sources use case: turns a user URL into media a watch room can play.
  *
  * Links the platforms' official players can show (YouTube, VK Video, Twitch recordings and live
- * channels) are parsed locally and played in the browser (no yt-dlp, no server bandwidth). Everything else, and any link in forced file
+ * channels) are parsed locally and played in the browser (no yt-dlp, no server bandwidth).
+ * AniLiberty links are resolved through its public API to one episode, whose HLS stream the
+ * browsers play straight from the AniLiberty CDN. Everything else, and any link in forced file
  * mode, goes through the regular analysis and is prepared by the download worker as a watch job
  * capped at WATCH_MAX_HEIGHT.
  */
@@ -37,6 +42,7 @@ final readonly class WatchSourceService
         private DownloadService $downloads,
         private WatchMediaService $media,
         private MediaTicket $tickets,
+        private AniLibertyClient $aniLiberty,
         private RateLimiter $rateLimiter,
         private Clock $clock,
         private AppConfig $config,
@@ -105,6 +111,8 @@ final readonly class WatchSourceService
                 $video = VkVideoId::fromUrl($url->url);
 
                 return $video === null ? null : new WatchSource(WatchSourceKind::Vk, $video->ref(), $platform, null, null, null, $video->startSec);
+            case 'aniliberty':
+                return $this->aniLibertyEpisode($url);
             case 'twitch':
                 $twitch = TwitchRef::fromUrl($url->url);
 
@@ -112,6 +120,38 @@ final readonly class WatchSourceService
             default:
                 return null;
         }
+    }
+
+    /**
+     * The episode an AniLiberty link points to; a release link starts with its first episode.
+     *
+     * @throws ApiException INVALID_URL, VIDEO_UNAVAILABLE, GEO_RESTRICTED, NO_FORMATS, EXTRACTOR_FAILED
+     */
+    private function aniLibertyEpisode(ValidatedUrl $url): WatchSource
+    {
+        $link = AniLibertyLink::fromUrl($url->url)
+            ?? throw new ApiException(ErrorCode::InvalidUrl, 'not an aniliberty release or episode', 'Вставьте ссылку на тайтл или серию AniLiberty.');
+
+        if ($link->episodeId !== null) {
+            ['episode' => $episode, 'release' => $release] = $this->aniLiberty->fetchEpisode($link->episodeId);
+        } else {
+            $release = $this->aniLiberty->fetchRelease((string) $link->releaseAlias);
+            $episode = $release->firstPlayableEpisode();
+        }
+        AniLibertyService::assertWatchable($release);
+        if ($episode === null || $episode->streams === []) {
+            throw new ApiException(ErrorCode::NoFormats, 'no playable episode', 'У этого тайтла пока нет серий для просмотра.');
+        }
+
+        return new WatchSource(
+            WatchSourceKind::AniLiberty,
+            $release->id . ':' . $episode->id,
+            $url->platform->name,
+            $release->title . ' — серия ' . $episode->label(),
+            $episode->durationSec,
+            $episode->previewUrl ?? $release->posterUrl,
+            0,
+        );
     }
 
     /**

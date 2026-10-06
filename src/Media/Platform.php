@@ -8,7 +8,8 @@ final readonly class Platform
 {
     /**
      * @param non-empty-list<string> $domains lowercase registrable domains
-     * @param non-empty-list<string> $extractors yt-dlp extractor names
+     * @param list<string> $extractors yt-dlp extractor names; empty for platforms played only in
+     *                                the browser, which yt-dlp never sees
      */
     public function __construct(
         public string $key,
@@ -16,6 +17,12 @@ final readonly class Platform
         public array $domains,
         public array $extractors,
     ) {
+    }
+
+    /** Whether yt-dlp may analyse and download links of this platform. */
+    public function isYtDlpSource(): bool
+    {
+        return $this->extractors !== [];
     }
 
     public function matchesHost(string $host): bool

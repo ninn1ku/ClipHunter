@@ -46,6 +46,9 @@ final readonly class AnalyzeService
         $this->rateLimiter->hit(self::RATE_BUCKET, $ipHash, $this->config->analyzeRateLimit);
 
         $url = $this->validator->validate($rawUrl);
+        if (!$url->platform->isYtDlpSource()) {
+            throw new ApiException(ErrorCode::UnsupportedSource, 'platform is played in the browser only');
+        }
 
         $slot = $this->semaphore->tryAcquire(self::SEMAPHORE, $this->config->maxConcurrentAnalyze);
         if ($slot === null) {

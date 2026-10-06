@@ -65,6 +65,8 @@ final readonly class AppConfig
         public int $watchFileRetentionSec,
         public int $watchIdleTtlSec,
         public RateLimitRule $watchSourcesRateLimit,
+        public RateLimitRule $watchAnimeRateLimit,
+        public string $aniLibertyApiUrl,
     ) {
     }
 
@@ -106,6 +108,11 @@ final readonly class AppConfig
         }
 
         $root = rtrim(str_replace('\\', '/', $projectRoot), '/');
+
+        $aniLibertyApiUrl = rtrim($reader->string('ANILIBERTY_API_URL', 'https://aniliberty.top/api/v1'), '/');
+        if (preg_match('~^https://[a-z0-9.-]+(/[A-Za-z0-9/_.-]*)?$~D', $aniLibertyApiUrl) !== 1) {
+            throw new ConfigException('ANILIBERTY_API_URL must be an https URL (its host is checked against config/aniliberty.php).');
+        }
 
         return new self(
             env: $appEnv,
@@ -151,6 +158,8 @@ final readonly class AppConfig
             watchFileRetentionSec: $reader->int('WATCH_FILE_RETENTION_MIN', 360, 30, 1_440) * 60,
             watchIdleTtlSec: $reader->int('WATCH_IDLE_TTL_MIN', 10, 2, 1_440) * 60,
             watchSourcesRateLimit: RateLimitRule::fromString($reader->string('RATE_LIMIT_WATCH_SOURCES', '20/3600')),
+            watchAnimeRateLimit: RateLimitRule::fromString($reader->string('RATE_LIMIT_WATCH_ANIME', '120/600')),
+            aniLibertyApiUrl: $aniLibertyApiUrl,
         );
     }
 

@@ -38,7 +38,8 @@ final readonly class PlatformRegistry
                 $key,
                 $name,
                 self::nonEmptyStrings($def['domains'] ?? null, $key, 'domains', '~^[a-z0-9-]+(\.[a-z0-9-]+)+$~'),
-                self::nonEmptyStrings($def['extractors'] ?? null, $key, 'extractors', '~^[A-Za-z0-9.:_]+$~'),
+                // An empty list marks a platform played only in the browser (never handed to yt-dlp).
+                ($def['extractors'] ?? null) === [] ? [] : self::nonEmptyStrings($def['extractors'] ?? null, $key, 'extractors', '~^[A-Za-z0-9.:_]+$~'),
             );
         }
 

@@ -90,6 +90,37 @@ final readonly class UrlValidator
         return new ValidatedUrl($url, $host, $platform);
     }
 
+    /**
+     * Checks a URL our server itself requests from a fixed third-party service (not user input,
+     * but still never trusted blindly): https, default port, no userinfo, a host from the given
+     * allowlist (or its subdomain) that resolves to public addresses only.
+     *
+     * @param list<string> $allowedHosts lowercase hosts
+     *
+     * @throws ApiException UNSUPPORTED_SOURCE when the URL is not acceptable
+     */
+    public function validateServiceUrl(string $url, array $allowedHosts): string
+    {
+        $parts = strlen($url) <= self::MAX_LENGTH ? parse_url($url) : false;
+        if (
+            $parts === false || strtolower($parts['scheme'] ?? '') !== 'https' || isset($parts['user']) || isset($parts['pass'])
+            || (isset($parts['port']) && $parts['port'] !== 443) || preg_match('~[\x00-\x20\x7F\\\\]~', $url) === 1
+        ) {
+            throw new ApiException(ErrorCode::UnsupportedSource, 'service_url_rejected');
+        }
+        $host = $this->normalizeHost($parts['host'] ?? '');
+        $allowed = false;
+        foreach ($allowedHosts as $domain) {
+            $allowed = $allowed || $host === $domain || str_ends_with($host, '.' . $domain);
+        }
+        if (!$allowed) {
+            throw new ApiException(ErrorCode::UnsupportedSource, 'service_host_not_allowlisted');
+        }
+        $this->assertResolvesToPublicAddresses($host);
+
+        return $url;
+    }
+
     private function normalizeHost(string $host): string
     {
         if ($host === '' || str_starts_with($host, '[')) {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ClipHunter\Tests\Support;
 
+use ClipHunter\AniLiberty\JsonFetcher;
 use ClipHunter\Config\AppConfig;
 use ClipHunter\Container;
 use ClipHunter\Http\RequestContext;
@@ -39,6 +40,7 @@ final class TestApp
     public readonly AppConfig $config;
     public readonly FrozenClock $clock;
     public readonly FakeResolver $resolver;
+    public readonly FakeJsonFetcher $aniliberty;
     private readonly Psr17Factory $factory;
 
     /**
@@ -61,10 +63,12 @@ final class TestApp
         $this->logs = new TestHandler();
         $this->clock = new FrozenClock();
         $this->resolver = new FakeResolver();
+        $this->aniliberty = new FakeJsonFetcher(FakeJsonFetcher::fixtureResponses());
 
         $logs = $this->logs;
         $clock = $this->clock;
         $resolver = $this->resolver;
+        $aniliberty = $this->aniliberty;
         $config = $this->config;
 
         $this->container->set(
@@ -73,6 +77,7 @@ final class TestApp
         );
         $this->container->set(Clock::class, static fn (): Clock => $clock);
         $this->container->set(HostResolver::class, static fn (): HostResolver => $resolver);
+        $this->container->set(JsonFetcher::class, static fn (): JsonFetcher => $aniliberty);
         $this->container->set(YtDlpClient::class, static fn (Container $c): YtDlpClient => new YtDlpClient(
             self::fakeYtDlp(),
             $c->get(ProcessRunner::class),

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ClipHunter\Http;
 
 use ClipHunter\Http\Controller\AnalyzeController;
+use ClipHunter\Http\Controller\AniLibertyController;
 use ClipHunter\Http\Controller\DownloadController;
 use ClipHunter\Http\Controller\DownloadFileController;
 use ClipHunter\Http\Controller\DownloadStatusController;
@@ -49,6 +50,9 @@ final readonly class Route
             new self('GET', $media . '/file', WatchMediaFileController::class),
             new self('GET', $media . '/variants', WatchMediaVariantsController::class),
             new self('POST', $media . '/variants', WatchMediaVariantsController::class),
+            new self('GET', '/api/watch/aniliberty/search', AniLibertyController::class),
+            new self('GET', '/api/watch/aniliberty/releases/{releaseId:[1-9][0-9]{0,9}}', AniLibertyController::class),
+            new self('GET', '/api/watch/aniliberty/episodes/{episodeId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}', AniLibertyController::class),
         ];
     }
 }

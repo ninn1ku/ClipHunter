@@ -6,8 +6,13 @@ namespace ClipHunter;
 
 use ClipHunter\Analysis\AnalysisRepository;
 use ClipHunter\Analysis\AnalyzeService;
+use ClipHunter\AniLiberty\AniLibertyClient;
+use ClipHunter\AniLiberty\AniLibertyService;
+use ClipHunter\AniLiberty\CurlJsonFetcher;
+use ClipHunter\AniLiberty\JsonFetcher;
 use ClipHunter\Config\AppConfig;
 use ClipHunter\Http\Controller\AnalyzeController;
+use ClipHunter\Http\Controller\AniLibertyController;
 use ClipHunter\Http\Controller\DownloadController;
 use ClipHunter\Http\Controller\DownloadFileController;
 use ClipHunter\Http\Controller\DownloadStatusController;
@@ -162,6 +167,28 @@ final class Services
             $c->get(LoggerInterface::class),
         ));
 
+        // AniLiberty (watch rooms play its HLS streams in the browser; our server reads metadata only)
+        $c->set(JsonFetcher::class, static fn (): JsonFetcher => new CurlJsonFetcher(10, 'ClipHunter/1.0 (+' . $config->appUrl . ')'));
+        $c->set(AniLibertyClient::class, static function (Container $c) use ($config): AniLibertyClient {
+            /** @var array{api_hosts: list<string>, stream_hosts: list<string>, site_url: string} $settings */
+            $settings = require $config->projectRoot . '/config/aniliberty.php';
+
+            return new AniLibertyClient(
+                $c->get(JsonFetcher::class),
+                $c->get(UrlValidator::class),
+                $config->aniLibertyApiUrl,
+                $settings['api_hosts'],
+                $settings['stream_hosts'],
+                $settings['site_url'],
+            );
+        });
+        $c->set(AniLibertyService::class, static fn (Container $c): AniLibertyService => new AniLibertyService(
+            $c->get(AniLibertyClient::class),
+            $c->get(RateLimiter::class),
+            $config,
+            $c->get(LoggerInterface::class),
+        ));
+
         // Watch rooms
         $c->set(MediaTicket::class, static fn (): MediaTicket => new MediaTicket($config->roomsSecret));
         $c->set(WatchMediaService::class, static fn (Container $c): WatchMediaService => new WatchMediaService(
@@ -176,6 +203,7 @@ final class Services
             $c->get(DownloadService::class),
             $c->get(WatchMediaService::class),
             $c->get(MediaTicket::class),
+            $c->get(AniLibertyClient::class),
             $c->get(RateLimiter::class),
             $c->get(Clock::class),
             $config,
@@ -223,6 +251,10 @@ final class Services
             $c->get(Psr17Factory::class),
             $c->get(Psr17Factory::class),
             $config,
+        ));
+        $c->set(AniLibertyController::class, static fn (Container $c): AniLibertyController => new AniLibertyController(
+            $c->get(AniLibertyService::class),
+            $c->get(JsonResponder::class),
         ));
         $c->set(WatchSourceController::class, static fn (Container $c): WatchSourceController => new WatchSourceController(
             $c->get(WatchSourceService::class),

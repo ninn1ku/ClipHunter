@@ -1,0 +1,50 @@
+{
+    "id": 10335,
+    "alias": "test-anime",
+    "year": 2026,
+    "name": {"main": "Тестовый тайтл <b>\u0007", "english": "Test Anime", "alternative": null},
+    "poster": {
+        "src": "/storage/releases/posters/10335/poster.jpg",
+        "optimized": {"thumbnail": "/storage/releases/posters/10335/thumb.webp"}
+    },
+    "is_blocked_by_geo": false,
+    "is_blocked_by_copyrights": false,
+    "episodes_total": 12,
+    "episodes": [
+        {
+            "id": "b3eaa868-41e2-486d-81f0-c2f124f82803",
+            "release_id": 10335,
+            "ordinal": 2,
+            "name": "Вторая серия",
+            "duration": 1440,
+            "preview": {"src": "/storage/../../etc/passwd"},
+            "hls_480": "https://evil.example.com/a.m3u8",
+            "hls_720": "http://cache.libria.fun/videos/2/720/a.m3u8",
+            "hls_1080": "https://cache.libria.fun:8443/videos/2/1080/a.m3u8"
+        },
+        {
+            "id": "a2eaa868-41e2-486d-81f0-c2f124f82803",
+            "release_id": 10335,
+            "ordinal": 1,
+            "name": "Первая серия",
+            "duration": 1430,
+            "opening": {"start": 90, "stop": 180},
+            "ending": {"start": null, "stop": null},
+            "preview": {"src": "/storage/releases/episodes/previews/10335/1/p.jpg", "optimized": {"thumbnail": "/storage/releases/episodes/previews/10335/1/t.webp"}},
+            "hls_480": "https://cache.libria.fun/videos/media/ts/10335/1/480/x.m3u8?countryIso=RU",
+            "hls_720": "https://cache.libria.fun/videos/media/ts/10335/1/720/y.m3u8?countryIso=RU",
+            "hls_1080": null
+        },
+        {
+            "id": "c4eaa868-41e2-486d-81f0-c2f124f82803",
+            "release_id": 10335,
+            "ordinal": 2.5,
+            "name": null,
+            "duration": 600,
+            "hls_480": "https://cache.libria.fun/videos/media/ts/10335/2.5/480/z.m3u8",
+            "hls_720": "https://cache.libria.fun/videos/media/ts/10335/2.5/720/z.html",
+            "hls_1080": null
+        },
+        {"id": "../../x", "release_id": 10335, "ordinal": 3}
+    ]
+}

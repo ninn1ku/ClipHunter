@@ -8,6 +8,8 @@ declare(strict_types=1);
  * - domains:    a URL host must equal one of these or be a subdomain of it.
  * - extractors: yt-dlp extractor names passed to --use-extractors. Only single-video
  *               extractors are listed; "generic" is never allowed (it fetches arbitrary URLs).
+ *               An empty list means the platform is never handed to yt-dlp: its links only
+ *               open watch rooms that play in the browser (see config/aniliberty.php).
  *
  * Verify names with `yt-dlp --list-extractors` after upgrading yt-dlp.
  */
@@ -62,5 +64,10 @@ return [
         'name' => 'Одноклассники',
         'domains' => ['ok.ru'],
         'extractors' => ['Odnoklassniki'],
+    ],
+    'aniliberty' => [
+        'name' => 'AniLiberty',
+        'domains' => ['aniliberty.top', 'anilibria.top'],
+        'extractors' => [],
     ],
 ];
