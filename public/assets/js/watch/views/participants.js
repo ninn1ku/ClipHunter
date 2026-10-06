@@ -31,6 +31,13 @@ export class ParticipantsView {
 
   /** @param {import('../store.js').RoomState} state */
   render(state) {
+    // The store is immutable: unchanged inputs mean nothing to redraw. Rebuilding the rows on
+    // every tick (twice a second) is wasteful and was enough to starve video decoding in Chrome.
+    const inputs = [state.participants, state.hostId, state.me, state.capacity];
+    if (this.lastInputs !== undefined && inputs.every((value, i) => value === this.lastInputs[i])) {
+      return;
+    }
+    this.lastInputs = inputs;
     const amHost = state.me !== null && state.hostId === state.me;
     const full = state.participants.length >= state.capacity;
     // Keep an open menu open across re-renders only if its participant is still there.

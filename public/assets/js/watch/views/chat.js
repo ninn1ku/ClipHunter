@@ -35,6 +35,11 @@ export class ChatView {
 
   /** @param {import('../store.js').RoomState} state */
   render(state) {
+    const inputs = [state.chat, state.me, state.participants.length, state.connection];
+    if (this.lastInputs !== undefined && inputs.every((value, i) => value === this.lastInputs[i])) {
+      return;
+    }
+    this.lastInputs = inputs;
     this.me = state.me;
     this.el.sub.textContent = participantsLabel(state.participants.length);
     this.el.input.disabled = state.connection !== 'open';
