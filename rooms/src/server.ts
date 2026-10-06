@@ -25,6 +25,7 @@ export const WS_PATH = '/ws/rooms';
 const SWEEP_INTERVAL_MS = 15_000;
 const SNAPSHOT_INTERVAL_MS = 10_000;
 const IDLE_TIMEOUT_SEC = 30;
+const STOP_DRAIN_MS = 2000;
 
 export class Gateway implements Hub {
   readonly registry: RoomRegistry;
@@ -99,6 +100,12 @@ export class Gateway implements Hub {
     await this.saveSnapshot(true);
     for (const connection of this.connections) {
       connection.close(CLOSE.restart, 'service restarting');
+    }
+    // Let the close handshakes finish: shutting the server down at once would cut the sockets,
+    // and clients would see 1001 instead of 1012 (and back off instead of reconnecting at once).
+    const deadline = Date.now() + STOP_DRAIN_MS;
+    while (this.connections.size > 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
 

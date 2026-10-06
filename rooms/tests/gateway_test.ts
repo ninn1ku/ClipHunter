@@ -414,6 +414,19 @@ test('frames over 4096 bytes close the socket with 1009', async (h) => {
   assert.equal((await client.closed).code, 1009);
 });
 
+test('stop waits until clients got 1012, so a shutdown right after cannot cut them off', async (h) => {
+  const host = await createRoom(h);
+  let closedCode = 0;
+  host.client.ws.addEventListener('close', (event) => {
+    closedCode = event.code;
+  });
+
+  await h.gateway.stop();
+
+  assert.equal(closedCode, 1012, 'the close handshake finished before stop() returned');
+  assert.equal(h.gateway.connectionCount, 0);
+});
+
 test('room-wide changes such as renames are rate limited', async (h) => {
   const host = await createRoom(h);
   const codes: unknown[] = [];
