@@ -56,7 +56,7 @@ export class Connection {
   private closing = false;
   private violations = 0;
   private queue: Promise<void> = Promise.resolve();
-  private readonly limits: Record<'all' | 'playback' | 'chat' | 'presence', TokenBucket>;
+  private readonly limits: Record<'all' | 'playback' | 'chat' | 'presence' | 'control', TokenBucket>;
 
   constructor(
     private readonly socket: WebSocket,
@@ -69,6 +69,8 @@ export class Connection {
       playback: new TokenBucket(4, 10, hub.clock),
       chat: new TokenBucket(1, 5, hub.clock),
       presence: new TokenBucket(2, 4, hub.clock),
+      // Room-wide changes (media, names, host, kicks) are broadcast to everyone: keep them rare.
+      control: new TokenBucket(1, 5, hub.clock),
     };
     socket.onmessage = (event) => this.receive(event.data);
     socket.onclose = (event) => hub.closed(this, event.code);
@@ -200,6 +202,9 @@ export class Connection {
         return this.apply(m.reqId, room, room.command(me, command, m.positionSec, now));
       }
       case 'media.set': {
+        if (!this.limits.control.take()) {
+          return this.violation(m.reqId, 'RATE_LIMITED', 'control');
+        }
         const media = await this.verifyTicket(m.reqId, m.ticket);
         if (media === null || this.closing || this.room !== room) {
           return;
@@ -225,10 +230,19 @@ export class Connection {
         }
         return this.apply(m.reqId, room, room.setPresence(me, m.state));
       case 'participant.rename':
+        if (!this.limits.control.take()) {
+          return this.violation(m.reqId, 'RATE_LIMITED', 'control');
+        }
         return this.apply(m.reqId, room, room.rename(me, m.name));
       case 'host.transfer':
+        if (!this.limits.control.take()) {
+          return this.violation(m.reqId, 'RATE_LIMITED', 'control');
+        }
         return this.apply(m.reqId, room, room.transferHost(me, m.participantId, now));
       case 'participant.kick': {
+        if (!this.limits.control.take()) {
+          return this.violation(m.reqId, 'RATE_LIMITED', 'control');
+        }
         const result = room.kick(me, m.participantId, now);
         if (!result.ok) {
           return this.error(m.reqId, result.code);

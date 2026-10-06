@@ -414,6 +414,18 @@ test('frames over 4096 bytes close the socket with 1009', async (h) => {
   assert.equal((await client.closed).code, 1009);
 });
 
+test('room-wide changes such as renames are rate limited', async (h) => {
+  const host = await createRoom(h);
+  const codes: unknown[] = [];
+  // Burst of 5, then 1 per second; the fake clock does not move, so the 6th is refused.
+  for (let i = 0; i < 6; i++) {
+    codes.push((await host.client.request({ type: 'participant.rename', name: `Маша ${i}` })).type);
+  }
+
+  assert.deepEqual(codes, ['ack', 'ack', 'ack', 'ack', 'ack', 'error']);
+  assert.ok(h.log.entries.some((e) => e.event === 'limit.hit' && e.limit === 'control'));
+});
+
 test('join attempts are rate limited per IP', async (h) => {
   const client = await h.connect();
   const codes: unknown[] = [];
