@@ -46,3 +46,16 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
       - run: composer install --no-interaction --no-progress
       - run: vendor/bin/phpunit
+
+  rooms:
+    name: Rooms service (Deno)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno fmt --check
+      - run: deno lint
+      - run: deno check rooms/
+      - run: deno task test
