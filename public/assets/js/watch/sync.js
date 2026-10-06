@@ -417,7 +417,13 @@ export class SyncController {
     this.adapter = adapter;
     this.status.overlay = 'loading';
     adapter.on('play', () => this.onPlayerEvent('play'));
-    adapter.on('pause', () => this.onPlayerEvent('pause'));
+    adapter.on('pause', () => {
+      // YouTube goes BUFFERING → PAUSED without a PLAYING in between (e.g. a seek while paused).
+      if (this.status.buffering) {
+        this.onBuffering(false);
+      }
+      this.onPlayerEvent('pause');
+    });
     adapter.on('seeked', () => this.onPlayerEvent('seeked'));
     adapter.on('buffering', () => this.onBuffering(true));
     adapter.on('playing', () => this.onBuffering(false));
