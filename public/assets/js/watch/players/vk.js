@@ -7,16 +7,21 @@
 // - The API has no rate control: sync corrects VK by seeking, with a wider window than YouTube.
 // - Pre-roll ads (adStarted/adCompleted) count as buffering; meanwhile our controls let clicks
 //   through to the player, so its ad controls stay usable.
-// - The API reports no reason for a refusal. A player that never initialises, or fails before it
-//   ever played, is reported as VK_UNAVAILABLE: deleted, private, login-only or embedding disabled.
+// - The API reports no reason for a refusal. A player that never initialises within a minute, or
+//   stays in the error state before it ever played, is reported as VK_UNAVAILABLE: deleted,
+//   private, login-only or embedding disabled.
 
 import { EMBED_PLAYER } from '../playback.js';
 import { CoarseClock } from './coarse-clock.js';
 
 const API_URL = 'https://vk.ru/js/api/videoplayer.js';
 const EMBED_URL = 'https://vk.ru/video_ext.php';
-// A fresh embed can take 10 s and more to answer (measured 6–11 s on a clean browser profile).
-const INIT_TIMEOUT_MS = 30000;
+// The embed answers our "init" request once its page runs; its load event comes much later
+// (after ads and other resources: 14–24 s measured). So "init" is repeated until it answers.
+const INIT_RETRY_MS = 1000;
+const INIT_TIMEOUT_MS = 60000;
+/** An error counts only if the player is still in the error state after this long. */
+const ERROR_CONFIRM_MS = 3000;
 
 let apiPromise = null;
 
@@ -107,38 +112,47 @@ export class VkPlayerAdapter {
         this.player?.destroy();
         player = VK.VideoPlayer(iframe);
         this.player = player;
-        this.listen(player, resolve, fail);
+        this.listen(player, resolve);
       };
-      // The embed announces "inited" by itself as soon as it starts, often before the iframe's
-      // load event: listen from the moment the iframe is in the page. The API's own "init"
-      // request sent then may reach the initial about:blank and get lost, so if the embed has
-      // not answered by the time it loaded, ask again.
-      iframe.addEventListener('load', () => {
-        if (!this.ready && this.mount.firstChild === iframe) {
+      // Listen from the moment the iframe is in the page and repeat the API's "init" request
+      // every second: the first ones reach the initial about:blank or a page still starting up
+      // and get lost, and waiting for the iframe's load event costs 15–25 s.
+      const retry = setInterval(() => {
+        if (this.ready || this.mount.firstChild !== iframe) {
+          clearInterval(retry);
+        } else {
           connect();
         }
-      });
+      }, INIT_RETRY_MS);
+      this.retry = retry;
       this.mount.replaceChildren(iframe);
       connect();
     });
     this.subscribe(player);
   }
 
-  /** Readiness: "inited" from the embed, or a failure before it. */
-  listen(player, resolve, fail) {
+  /** Readiness: "inited" from the embed (only the timeout fails it). */
+  listen(player, resolve) {
     player.on('inited', () => {
       clearTimeout(this.timeout);
       this.ready = true;
       this.emit('ready');
       resolve();
     });
+    // The embed also reports errors it recovers from (a failed ad, for one) while the video
+    // plays on. Before "inited" only the timeout decides; later an error counts only if the
+    // player is still in the error state a moment after.
     player.on('error', () => {
       if (!this.ready) {
-        fail();
-      } else {
-        // After it played once, an error is a playback failure, not a refusal.
-        this.emit('error', { code: this.started ? 'MEDIA_ERROR' : 'VK_UNAVAILABLE' });
+        return;
       }
+      clearTimeout(this.errorTimer);
+      this.errorTimer = setTimeout(() => {
+        if (this.player === player && player.getState() === 'error') {
+          // After it played once, an error is a playback failure, not a refusal.
+          this.emit('error', { code: this.started ? 'MEDIA_ERROR' : 'VK_UNAVAILABLE' });
+        }
+      }, ERROR_CONFIRM_MS);
     });
   }
 
@@ -256,6 +270,8 @@ export class VkPlayerAdapter {
 
   destroy() {
     clearTimeout(this.timeout);
+    clearInterval(this.retry);
+    clearTimeout(this.errorTimer);
     this.listeners.clear();
     try {
       this.player?.destroy();
