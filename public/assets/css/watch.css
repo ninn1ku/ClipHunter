@@ -702,7 +702,8 @@
 
 /* The platform's own controls in use (Twitch always, VK during its ads): nothing of ours over the
    video, so clicks reach the embedded player. */
-.player[data-passthrough="true"] .player__ui {
+.player[data-passthrough="true"] .player__ui,
+.player[data-passthrough="true"] .player__poster {
   display: none;
 }
 

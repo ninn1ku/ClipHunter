@@ -625,11 +625,12 @@ class WatchApp {
     const kind = stageKind(media, this.preparation);
     this.sync.update(state, kind === 'ready');
     const status = this.sync.status;
-    // Nothing of ours may cover a player with its own controls: its prompts go under the video.
+    // Nothing of ours may cover a player with its own controls (Twitch checks that it is visible,
+    // also while it loads): its prompts go under the video, its loading is its own.
     this.player.render(
       state,
       this.preparation,
-      status.nativeControls && status.overlay === 'autoplay' ? null : status.overlay,
+      status.nativeControls && (status.overlay === 'autoplay' || status.overlay === 'loading') ? null : status.overlay,
     );
     this.renderSyncNote(status, state.connection);
     this.episodes.render(state);
