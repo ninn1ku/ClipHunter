@@ -1,0 +1,32 @@
+{
+  "lock": false,
+  "nodeModulesDir": "none",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "fmt": {
+    "include": ["rooms/", "tests/js/", "public/assets/js/watch/"],
+    "lineWidth": 110,
+    "indentWidth": 2,
+    "singleQuote": true,
+    "semiColons": true
+  },
+  "lint": {
+    "include": ["rooms/", "tests/js/", "public/assets/js/watch/"],
+    "rules": {
+      "tags": ["recommended"],
+      "include": ["eqeqeq", "no-console", "prefer-const", "explicit-function-return-type"]
+    }
+  },
+  "test": {
+    "include": ["rooms/tests/"]
+  },
+  "tasks": {
+    "dev": "deno run --watch --no-prompt --allow-net=127.0.0.1 --allow-env --allow-read=storage/rooms --allow-write=storage/rooms rooms/main.ts",
+    "test": "deno test --no-prompt --allow-net=127.0.0.1 --allow-read --allow-write --allow-env",
+    "check": "deno fmt --check && deno lint && deno check rooms/ && deno task test"
+  }
+}
