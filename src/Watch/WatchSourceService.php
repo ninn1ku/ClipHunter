@@ -20,8 +20,8 @@ use Psr\Log\LoggerInterface;
 /**
  * POST /api/watch/sources use case: turns a user URL into media a watch room can play.
  *
- * Links the platforms' official players can show (YouTube, VK Video) are parsed locally and played
- * in the browser (no yt-dlp, no server bandwidth). Everything else, and any link in forced file
+ * Links the platforms' official players can show (YouTube, VK Video, Twitch recordings and live
+ * channels) are parsed locally and played in the browser (no yt-dlp, no server bandwidth). Everything else, and any link in forced file
  * mode, goes through the regular analysis and is prepared by the download worker as a watch job
  * capped at WATCH_MAX_HEIGHT.
  */
@@ -105,6 +105,10 @@ final readonly class WatchSourceService
                 $video = VkVideoId::fromUrl($url->url);
 
                 return $video === null ? null : new WatchSource(WatchSourceKind::Vk, $video->ref(), $platform, null, null, null, $video->startSec);
+            case 'twitch':
+                $twitch = TwitchRef::fromUrl($url->url);
+
+                return $twitch === null ? null : new WatchSource(WatchSourceKind::Twitch, $twitch->ref, $platform, null, null, null, $twitch->startSec);
             default:
                 return null;
         }

@@ -89,6 +89,25 @@ final class WatchSourceApiTest extends TestCase
         self::assertSame('file', $source['kind']);
     }
 
+    public function testTwitchRecordingsAndChannelsEmbedWhileClipsArePrepared(): void
+    {
+        $app = new TestApp();
+
+        $recording = $app->watchSource('https://www.twitch.tv/videos/2345678901?t=1m');
+        $channel = $app->watchSource('https://www.twitch.tv/Shroud');
+        $clip = $app->watchSource('https://clips.twitch.tv/AwkwardHelplessSalamander?v=ok');
+
+        self::assertSame(200, $recording->getStatusCode(), (string) $recording->getBody());
+        $payload = $this->verifiedPayload($app, TestApp::decode($recording)['ticket']);
+        self::assertSame(['twitch', 'video:2345678901', 'Twitch', 60], [$payload['kind'], $payload['ref'], $payload['platform'], $payload['startSec']]);
+        $payload = $this->verifiedPayload($app, TestApp::decode($channel)['ticket']);
+        self::assertSame(['twitch', 'channel:shroud'], [$payload['kind'], $payload['ref']]);
+        self::assertSame(202, $clip->getStatusCode(), (string) $clip->getBody());
+        $source = TestApp::decode($clip)['source'];
+        self::assertIsArray($source);
+        self::assertSame('file', $source['kind']);
+    }
+
     public function testOtherPlatformsArePreparedByTheWorkerAsWatchJobs(): void
     {
         $app = new TestApp();

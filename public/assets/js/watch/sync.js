@@ -549,6 +549,7 @@ export class SyncController {
     adapter.on('error', ({ code }) => this.onPlayerError(code));
     adapter.on('captions', () => this.applyCaptionPreference());
     adapter.on('ad', () => this.refreshStatus());
+    adapter.on('blocked', () => this.blockAutoplay());
 
     const playback = roomPlayback ?? this.effective();
     const startSec = playback === null
@@ -594,6 +595,10 @@ export class SyncController {
     }
     if (type === 'play' || type === 'seeked') {
       clearTimeout(this.autoplayTimer);
+    }
+    if (type === 'play' && this.autoplayBlocked) {
+      // Started in the platform's own player: that click was the activation autoplay needed.
+      this.autoplayBlocked = false;
     }
     if (this.isOwn() || this.atEnd()) {
       this.refreshStatus();

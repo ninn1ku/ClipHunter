@@ -5,6 +5,7 @@ import { formatBytes } from '../format.js';
 import { fallbackTitle, needsPreparation, playerQualityNote, serverFallbackUrl } from './kinds.js';
 import { MediaWatcher } from './media.js';
 import { Html5PlayerAdapter } from './players/html5.js';
+import { TwitchPlayerAdapter } from './players/twitch.js';
 import { VkPlayerAdapter } from './players/vk.js';
 import { YouTubePlayerAdapter } from './players/youtube.js';
 import { SyncController } from './sync.js';
@@ -32,6 +33,7 @@ const KEEPALIVE_MS = 5 * 60_000;
 const ADAPTERS = {
   youtube: YouTubePlayerAdapter,
   vk: VkPlayerAdapter,
+  twitch: TwitchPlayerAdapter,
   file: Html5PlayerAdapter,
 };
 
@@ -547,6 +549,39 @@ class WatchApp {
 
   // ---------- Rendering ----------
 
+  /**
+   * The sync status under the video, for players whose own controls replace ours (Twitch).
+   * @param {import('./sync.js').SyncStatus} status
+   * @param {string} connection
+   */
+  renderSyncNote(status, connection) {
+    const note = $('sync-note');
+    let text = '';
+    let badge = status.badge;
+    if (status.nativeControls && status.ready) {
+      text = connection !== 'open'
+        ? 'Нет соединения с комнатой.'
+        : status.overlay === 'autoplay'
+        ? 'Нажмите ▶ в плеере, чтобы смотреть вместе.'
+        : status.live
+        ? 'Прямой эфир: пауза и запуск общие, время у всех — эфирное.'
+        : badge === 'synced'
+        ? 'Синхронизировано. Управляйте плеером как обычно — остальные увидят то же.'
+        : 'Синхронизация…';
+      if (status.overlay === 'autoplay') {
+        badge = 'syncing';
+      }
+    }
+    const key = `${badge}|${text}`;
+    if (note.dataset.key === key) {
+      return;
+    }
+    note.dataset.key = key;
+    note.dataset.state = badge;
+    note.hidden = text === '';
+    note.lastElementChild.textContent = text;
+  }
+
   scheduleRender() {
     if (this.renderQueued) {
       return;
@@ -576,7 +611,14 @@ class WatchApp {
     this.participants.render(state);
     const kind = stageKind(media, this.preparation);
     this.sync.update(state, kind === 'ready');
-    this.player.render(state, this.preparation, this.sync.status.overlay);
+    const status = this.sync.status;
+    // Nothing of ours may cover a player with its own controls: its prompts go under the video.
+    this.player.render(
+      state,
+      this.preparation,
+      status.nativeControls && status.overlay === 'autoplay' ? null : status.overlay,
+    );
+    this.renderSyncNote(status, state.connection);
     const title = media === null
       ? 'Видео ещё не выбрано'
       : media.title ?? this.sync.status.title ?? fallbackTitle(media);
