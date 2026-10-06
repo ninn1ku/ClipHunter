@@ -19,6 +19,10 @@ use Psr\Log\LoggerInterface;
 
 /**
  * API-side download use cases: create, status, file lookup, cancel.
+ *
+ * Every lookup is scoped to a {@see JobPurpose}: a watch-room file is not reachable through the
+ * download endpoints (otherwise any room member who knows the media id could DELETE it), and
+ * vice versa.
  */
 final readonly class DownloadService
 {
@@ -40,7 +44,7 @@ final readonly class DownloadService
     /**
      * @throws ApiException
      */
-    public function create(string $analysisId, string $optionId, string $ipHash): DownloadJob
+    public function create(string $analysisId, string $optionId, string $ipHash, JobPurpose $purpose = JobPurpose::Download): DownloadJob
     {
         $this->rateLimiter->hit(self::RATE_BUCKET, $ipHash, $this->config->downloadRateLimit);
 
@@ -81,9 +85,10 @@ final readonly class DownloadService
             expectedSizeBytes: $option->sizeBytes,
             ipHash: $ipHash,
             createdAt: $this->clock->now(),
+            purpose: $purpose,
         );
         $this->jobs->create($job);
-        $this->logger->info('job.queued', ['job_id' => $job->id, 'analysis_id' => $analysis->id, 'option' => $option->id]);
+        $this->logger->info('job.queued', ['job_id' => $job->id, 'analysis_id' => $analysis->id, 'option' => $option->id, 'purpose' => $purpose->value]);
 
         return $job;
     }
@@ -101,7 +106,6 @@ final readonly class DownloadService
             $status = JobStatus::Cancelled;
         }
 
-        $position = array_search($job->id, $this->jobs->queuedIds(), true);
         $file = null;
         if ($status === JobStatus::Completed && $job->fileName !== null && $job->expiresAt !== null) {
             $file = [
@@ -115,7 +119,7 @@ final readonly class DownloadService
         return [
             'jobId' => $job->id,
             'status' => $status->value,
-            'queuePosition' => $status === JobStatus::Queued && is_int($position) ? $position : null,
+            'queuePosition' => $status === JobStatus::Queued ? $this->queuePosition($job->id) : null,
             'progress' => $status->isActive() || $status === JobStatus::Completed ? $job->progress?->toArray() : null,
             'file' => $file,
             'error' => $job->error !== null && $status->isFinal() && $status !== JobStatus::Completed
@@ -127,11 +131,11 @@ final readonly class DownloadService
     /**
      * @return array{path: string, internalPath: string, mime: string, name: string, size: ?int}
      *
-     * @throws ApiException JOB_NOT_FOUND, FILE_NOT_READY, FILE_EXPIRED
+     * @throws ApiException JOB_NOT_FOUND (MEDIA_NOT_FOUND for watch jobs), FILE_NOT_READY, FILE_EXPIRED
      */
-    public function file(string $jobId): array
+    public function file(string $jobId, JobPurpose $purpose = JobPurpose::Download): array
     {
-        $job = $this->find($jobId);
+        $job = $this->find($jobId, $purpose);
 
         if ($job->status === JobStatus::Expired || ($job->expiresAt !== null && $job->expiresAt <= $this->clock->now())) {
             throw new ApiException(ErrorCode::FileExpired, 'expired');
@@ -190,13 +194,28 @@ final readonly class DownloadService
         }
     }
 
-    private function find(string $jobId): DownloadJob
+    /**
+     * @throws ApiException JOB_NOT_FOUND, or MEDIA_NOT_FOUND when looking for a watch job
+     */
+    public function find(string $jobId, JobPurpose $purpose = JobPurpose::Download): DownloadJob
     {
         $job = Ids::isValid($jobId) ? $this->jobs->find($jobId) : null;
-        if ($job === null) {
-            throw new ApiException(ErrorCode::JobNotFound, 'job missing');
+        if ($job === null || $job->purpose !== $purpose) {
+            $code = $purpose === JobPurpose::Watch ? ErrorCode::MediaNotFound : ErrorCode::JobNotFound;
+
+            throw new ApiException($code, $job === null ? 'job missing' : 'purpose mismatch');
         }
 
         return $job;
+    }
+
+    /**
+     * Zero-based position in the queue, or null when the job is not queued.
+     */
+    public function queuePosition(string $jobId): ?int
+    {
+        $position = array_search($jobId, $this->jobs->queuedIds(), true);
+
+        return is_int($position) ? $position : null;
     }
 }

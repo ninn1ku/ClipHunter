@@ -248,7 +248,7 @@ final readonly class JobRunner
         $job->fileExt = $ext;
         $job->fileSizeBytes = $size;
         $job->finishedAt = $now;
-        $job->expiresAt = $now + $this->config->fileRetentionSec;
+        $job->expiresAt = $now + ($job->purpose === JobPurpose::Watch ? $this->config->watchFileRetentionSec : $this->config->fileRetentionSec);
         $job->progress = new Progress(100.0, $size, $size, null, null);
     }
 

@@ -14,10 +14,11 @@ use PHPUnit\Framework\TestCase;
 final class AppConfigTest extends TestCase
 {
     private const SECRET = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    private const ROOMS_SECRET = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
     public function testDefaultsAreSensibleForTheSmallProductionServer(): void
     {
-        $config = AppConfig::fromEnvironment(['APP_SECRET' => self::SECRET], '/srv/app');
+        $config = AppConfig::fromEnvironment(['APP_SECRET' => self::SECRET, 'ROOMS_SECRET' => self::ROOMS_SECRET], '/srv/app');
 
         self::assertSame('production', $config->env);
         self::assertFalse($config->debug);
@@ -29,6 +30,11 @@ final class AppConfigTest extends TestCase
         self::assertSame(600, $config->analyzeRateLimit->windowSec);
         self::assertSame(Level::Info, $config->logLevel);
         self::assertSame('/srv/app/storage', $config->storagePath);
+        self::assertSame(self::ROOMS_SECRET, $config->roomsSecret);
+        self::assertSame(720, $config->watchMaxHeight);
+        self::assertSame(360 * 60, $config->watchFileRetentionSec);
+        self::assertSame(20, $config->watchSourcesRateLimit->limit);
+        self::assertSame(3600, $config->watchSourcesRateLimit->windowSec);
     }
 
     public function testAbsoluteStoragePathIsKept(): void
@@ -51,7 +57,15 @@ final class AppConfigTest extends TestCase
         $this->expectException(ConfigException::class);
         $this->expectExceptionMessage('APP_DEBUG');
 
-        AppConfig::fromEnvironment(['APP_SECRET' => self::SECRET, 'APP_DEBUG' => 'true'], '/srv/app');
+        AppConfig::fromEnvironment(['APP_SECRET' => self::SECRET, 'ROOMS_SECRET' => self::ROOMS_SECRET, 'APP_DEBUG' => 'true'], '/srv/app');
+    }
+
+    public function testProductionRequiresARoomsSecret(): void
+    {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('ROOMS_SECRET');
+
+        AppConfig::fromEnvironment(['APP_SECRET' => self::SECRET], '/srv/app');
     }
 
     public function testDevelopmentFallsBackToAnInsecureSecret(): void
@@ -59,6 +73,7 @@ final class AppConfigTest extends TestCase
         $config = AppConfig::fromEnvironment(['APP_ENV' => 'development'], '/srv/app');
 
         self::assertNotSame('', $config->appSecret);
+        self::assertSame(AppConfig::INSECURE_DEV_ROOMS_SECRET, $config->roomsSecret);
     }
 
     /**
@@ -75,6 +90,12 @@ final class AppConfigTest extends TestCase
         yield 'bad log level' => [['LOG_LEVEL' => 'verbose'], 'LOG_LEVEL'];
         yield 'bad rate limit' => [['RATE_LIMIT_ANALYZE' => 'twenty'], 'rate limit'];
         yield 'short secret' => [['APP_SECRET' => 'abc'], 'APP_SECRET'];
+        yield 'short rooms secret' => [['ROOMS_SECRET' => str_repeat('a', 63)], 'ROOMS_SECRET'];
+        yield 'uppercase rooms secret' => [['ROOMS_SECRET' => str_repeat('A', 64)], 'ROOMS_SECRET'];
+        yield 'watch height too small' => [['WATCH_MAX_HEIGHT' => '100'], 'WATCH_MAX_HEIGHT'];
+        yield 'watch height too large' => [['WATCH_MAX_HEIGHT' => '4320'], 'WATCH_MAX_HEIGHT'];
+        yield 'watch retention too short' => [['WATCH_FILE_RETENTION_MIN' => '10'], 'WATCH_FILE_RETENTION_MIN'];
+        yield 'bad watch rate limit' => [['RATE_LIMIT_WATCH_SOURCES' => '20 per hour'], 'rate limit'];
     }
 
     /**

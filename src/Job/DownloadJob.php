@@ -24,6 +24,7 @@ final class DownloadJob
         public readonly ?int $expectedSizeBytes,
         public readonly string $ipHash,
         public readonly int $createdAt,
+        public readonly JobPurpose $purpose = JobPurpose::Download,
         public JobStatus $status = JobStatus::Queued,
         public ?Progress $progress = null,
         public ?ErrorCode $error = null,
@@ -55,6 +56,7 @@ final class DownloadJob
             'expectedSizeBytes' => $this->expectedSizeBytes,
             'ipHash' => $this->ipHash,
             'createdAt' => $this->createdAt,
+            'purpose' => $this->purpose->value,
             'status' => $this->status->value,
             'progress' => $this->progress?->toArray(),
             'error' => $this->error?->value,
@@ -77,6 +79,8 @@ final class DownloadJob
         $nInt = static fn (string $k): ?int => is_int($d[$k] ?? null) ? $d[$k] : null;
 
         $status = JobStatus::tryFrom($str('status')) ?? throw new InvalidArgumentException('Malformed job: status');
+        // Job files written before watch rooms existed have no purpose: they are downloads.
+        $purpose = JobPurpose::tryFrom($nStr('purpose') ?? JobPurpose::Download->value) ?? throw new InvalidArgumentException('Malformed job: purpose');
         $progress = $d['progress'] ?? null;
         $error = $nStr('error');
         $ext = $nStr('fileExt');
@@ -95,6 +99,7 @@ final class DownloadJob
             expectedSizeBytes: $nInt('expectedSizeBytes'),
             ipHash: $str('ipHash'),
             createdAt: $nInt('createdAt') ?? throw new InvalidArgumentException('Malformed job: createdAt'),
+            purpose: $purpose,
             status: $status,
             progress: is_array($progress) ? Progress::fromArray($progress) : null,
             error: $error === null ? null : ErrorCode::tryFrom($error),

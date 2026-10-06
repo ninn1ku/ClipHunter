@@ -25,6 +25,12 @@ final readonly class AppConfig
     /** Used only outside production when APP_SECRET is empty. */
     private const INSECURE_DEV_SECRET = 'cliphunter-insecure-development-secret';
 
+    /**
+     * Used only outside production when ROOMS_SECRET is empty. The rooms service (rooms/src/config.ts)
+     * falls back to the same value, so local development works without configuration.
+     */
+    public const INSECURE_DEV_ROOMS_SECRET = 'adbe838fa134f78ad76a2cc074629ecf810aaf14f68a716aee0a8bdc77aa9c27';
+
     public function __construct(
         public string $env,
         public bool $debug,
@@ -53,6 +59,10 @@ final readonly class AppConfig
         public int $jobTtlSec,
         public Level $logLevel,
         public string $fileDelivery,
+        public string $roomsSecret,
+        public int $watchMaxHeight,
+        public int $watchFileRetentionSec,
+        public RateLimitRule $watchSourcesRateLimit,
     ) {
     }
 
@@ -81,6 +91,16 @@ final readonly class AppConfig
             $secret = self::INSECURE_DEV_SECRET;
         } elseif (preg_match('~^[a-f0-9]{64,}$~', $secret) !== 1) {
             throw new ConfigException('APP_SECRET must be at least 64 lowercase hex characters.');
+        }
+
+        $roomsSecret = $reader->string('ROOMS_SECRET', '');
+        if ($roomsSecret === '') {
+            if ($isProduction) {
+                throw new ConfigException('ROOMS_SECRET is required in production.');
+            }
+            $roomsSecret = self::INSECURE_DEV_ROOMS_SECRET;
+        } elseif (preg_match('~^[a-f0-9]{64,}$~', $roomsSecret) !== 1) {
+            throw new ConfigException('ROOMS_SECRET must be at least 64 lowercase hex characters.');
         }
 
         $root = rtrim(str_replace('\\', '/', $projectRoot), '/');
@@ -123,6 +143,10 @@ final readonly class AppConfig
                 [self::FILE_DELIVERY_XACCEL, self::FILE_DELIVERY_PHP],
                 $isProduction ? self::FILE_DELIVERY_XACCEL : self::FILE_DELIVERY_PHP,
             ),
+            roomsSecret: $roomsSecret,
+            watchMaxHeight: $reader->int('WATCH_MAX_HEIGHT', 720, 144, 2160),
+            watchFileRetentionSec: $reader->int('WATCH_FILE_RETENTION_MIN', 360, 30, 1_440) * 60,
+            watchSourcesRateLimit: RateLimitRule::fromString($reader->string('RATE_LIMIT_WATCH_SOURCES', '20/3600')),
         );
     }
 

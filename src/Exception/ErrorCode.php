@@ -40,6 +40,7 @@ enum ErrorCode: string
     case FileNotReady = 'FILE_NOT_READY';
     case FileExpired = 'FILE_EXPIRED';
     case FileTooLarge = 'FILE_TOO_LARGE';
+    case MediaNotFound = 'MEDIA_NOT_FOUND';
 
     // Limits
     case RateLimited = 'RATE_LIMITED';
@@ -63,7 +64,7 @@ enum ErrorCode: string
         return match ($this) {
             self::InvalidJson, self::InvalidRequest, self::InvalidUrl => 400,
             self::ForbiddenOrigin => 403,
-            self::NotFound, self::AnalysisNotFound, self::JobNotFound => 404,
+            self::NotFound, self::AnalysisNotFound, self::JobNotFound, self::MediaNotFound => 404,
             self::MethodNotAllowed => 405,
             self::FileNotReady, self::Cancelled => 409,
             self::FileExpired => 410,
@@ -107,6 +108,7 @@ enum ErrorCode: string
             self::FileNotReady => 'Файл ещё не готов.',
             self::FileExpired => 'Срок хранения файла истёк. Запустите загрузку заново.',
             self::FileTooLarge => 'Файл слишком большой. Выберите качество пониже.',
+            self::MediaNotFound => 'Видео для комнаты не найдено или уже удалено.',
             self::RateLimited => 'Слишком много запросов. Попробуйте чуть позже.',
             self::TooManyActiveJobs => 'Дождитесь окончания текущей загрузки.',
             self::ServerBusy => 'Сервер сейчас загружен. Попробуйте через минуту.',
