@@ -71,7 +71,7 @@ export function systemLine(message) {
     case 'left':
       return `${message.name} выходит из комнаты`;
     case 'kicked':
-      return `${message.name} удалили из комнаты`;
+      return `Ведущий удалил участника ${message.name}`;
     case 'host':
       return `Ведущий теперь — ${message.name}`;
     case 'media':
