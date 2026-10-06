@@ -9,6 +9,9 @@ use ClipHunter\Http\Controller\DownloadController;
 use ClipHunter\Http\Controller\DownloadFileController;
 use ClipHunter\Http\Controller\DownloadStatusController;
 use ClipHunter\Http\Controller\HealthController;
+use ClipHunter\Http\Controller\WatchMediaFileController;
+use ClipHunter\Http\Controller\WatchMediaStatusController;
+use ClipHunter\Http\Controller\WatchSourceController;
 use Psr\Http\Server\RequestHandlerInterface;
 
 final readonly class Route
@@ -31,6 +34,7 @@ final readonly class Route
     public static function all(): array
     {
         $job = '/api/downloads/{id:[a-f0-9]{32}}';
+        $media = '/api/watch/media/{id:[a-f0-9]{32}}';
 
         return [
             new self('GET', '/api/health', HealthController::class),
@@ -39,6 +43,9 @@ final readonly class Route
             new self('GET', $job, DownloadStatusController::class),
             new self('DELETE', $job, DownloadStatusController::class),
             new self('GET', $job . '/file', DownloadFileController::class),
+            new self('POST', '/api/watch/sources', WatchSourceController::class),
+            new self('GET', $media, WatchMediaStatusController::class),
+            new self('GET', $media . '/file', WatchMediaFileController::class),
         ];
     }
 }

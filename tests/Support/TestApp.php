@@ -123,6 +123,35 @@ final class TestApp
     }
 
     /**
+     * POST /api/watch/sources as a same-origin browser would send it.
+     *
+     * @param array<string, string> $server
+     */
+    public function watchSource(string $url, ?string $mode = null, array $server = []): ResponseInterface
+    {
+        $body = $mode === null ? ['url' => $url] : ['url' => $url, 'mode' => $mode];
+
+        return $this->request('POST', '/api/watch/sources', $body, ['Origin' => self::APP_URL, 'Sec-Fetch-Site' => 'same-origin'], $server);
+    }
+
+    /**
+     * Resolve a fake non-YouTube URL into a watch job (file mode).
+     *
+     * @return string media (job) id
+     */
+    public function queueWatchMedia(string $scenario = 'ok'): string
+    {
+        $response = $this->watchSource('https://vk.com/video-1_2?v=' . $scenario);
+        $source = self::decode($response)['source'] ?? null;
+        $mediaId = is_array($source) ? ($source['mediaId'] ?? null) : null;
+        if (!is_string($mediaId)) {
+            throw new RuntimeException('Watch source failed: ' . $response->getBody());
+        }
+
+        return $mediaId;
+    }
+
+    /**
      * Analyse a fake URL and queue a download of one of its options.
      *
      * @param array<string, string> $server

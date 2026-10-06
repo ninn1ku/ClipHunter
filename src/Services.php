@@ -12,6 +12,9 @@ use ClipHunter\Http\Controller\DownloadController;
 use ClipHunter\Http\Controller\DownloadFileController;
 use ClipHunter\Http\Controller\DownloadStatusController;
 use ClipHunter\Http\Controller\HealthController;
+use ClipHunter\Http\Controller\WatchMediaFileController;
+use ClipHunter\Http\Controller\WatchMediaStatusController;
+use ClipHunter\Http\Controller\WatchSourceController;
 use ClipHunter\Http\JsonResponder;
 use ClipHunter\Http\Middleware\AccessLogMiddleware;
 use ClipHunter\Http\Middleware\ErrorHandlerMiddleware;
@@ -44,6 +47,9 @@ use ClipHunter\Storage\StorageGuard;
 use ClipHunter\Storage\StoragePaths;
 use ClipHunter\Support\Clock;
 use ClipHunter\Support\SystemClock;
+use ClipHunter\Watch\MediaTicket;
+use ClipHunter\Watch\WatchMediaService;
+use ClipHunter\Watch\WatchSourceService;
 use Monolog\Logger;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Http\Server\RequestHandlerInterface;
@@ -155,6 +161,24 @@ final class Services
             $c->get(LoggerInterface::class),
         ));
 
+        // Watch rooms
+        $c->set(MediaTicket::class, static fn (): MediaTicket => new MediaTicket($config->roomsSecret));
+        $c->set(WatchMediaService::class, static fn (Container $c): WatchMediaService => new WatchMediaService(
+            $c->get(DownloadService::class),
+            $c->get(Clock::class),
+        ));
+        $c->set(WatchSourceService::class, static fn (Container $c): WatchSourceService => new WatchSourceService(
+            $c->get(UrlValidator::class),
+            $c->get(AnalyzeService::class),
+            $c->get(DownloadService::class),
+            $c->get(WatchMediaService::class),
+            $c->get(MediaTicket::class),
+            $c->get(RateLimiter::class),
+            $c->get(Clock::class),
+            $config,
+            $c->get(LoggerInterface::class),
+        ));
+
         // HTTP
         $c->set(JsonResponder::class, static fn (Container $c): JsonResponder => new JsonResponder(
             $c->get(Psr17Factory::class),
@@ -193,6 +217,20 @@ final class Services
         ));
         $c->set(DownloadFileController::class, static fn (Container $c): DownloadFileController => new DownloadFileController(
             $c->get(DownloadService::class),
+            $c->get(Psr17Factory::class),
+            $c->get(Psr17Factory::class),
+            $config,
+        ));
+        $c->set(WatchSourceController::class, static fn (Container $c): WatchSourceController => new WatchSourceController(
+            $c->get(WatchSourceService::class),
+            $c->get(JsonResponder::class),
+        ));
+        $c->set(WatchMediaStatusController::class, static fn (Container $c): WatchMediaStatusController => new WatchMediaStatusController(
+            $c->get(WatchMediaService::class),
+            $c->get(JsonResponder::class),
+        ));
+        $c->set(WatchMediaFileController::class, static fn (Container $c): WatchMediaFileController => new WatchMediaFileController(
+            $c->get(WatchMediaService::class),
             $c->get(Psr17Factory::class),
             $c->get(Psr17Factory::class),
             $config,

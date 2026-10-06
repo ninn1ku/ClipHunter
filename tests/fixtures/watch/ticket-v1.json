@@ -1,0 +1,16 @@
+{
+    "description": "Contract between PHP (MediaTicket) and the rooms service (rooms/src/security/ticket.ts). Both test suites check it.",
+    "secret": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "payload": {
+        "v": 1,
+        "kind": "file",
+        "ref": "9f1c2b3a4d5e6f708192a3b4c5d6e7f8",
+        "platform": "ВКонтакте",
+        "title": "Кот & «пёс» — \"тест\" 🎬 </script>",
+        "durationSec": 213,
+        "thumbnailUrl": "https://sun9-1.userapi.com/impg/a/b.jpg?size=320x240&quality=96",
+        "startSec": 0,
+        "exp": 1791234567
+    },
+    "ticket": "eyJ2IjoxLCJraW5kIjoiZmlsZSIsInJlZiI6IjlmMWMyYjNhNGQ1ZTZmNzA4MTkyYTNiNGM1ZDZlN2Y4IiwicGxhdGZvcm0iOiLQktCa0L7QvdGC0LDQutGC0LUiLCJ0aXRsZSI6ItCa0L7RgiAmIMKr0L_RkdGBwrsg4oCUIFwi0YLQtdGB0YJcIiDwn46sIDwvc2NyaXB0PiIsImR1cmF0aW9uU2VjIjoyMTMsInRodW1ibmFpbFVybCI6Imh0dHBzOi8vc3VuOS0xLnVzZXJhcGkuY29tL2ltcGcvYS9iLmpwZz9zaXplPTMyMHgyNDAmcXVhbGl0eT05NiIsInN0YXJ0U2VjIjowLCJleHAiOjE3OTEyMzQ1Njd9.W_Srs7HWu5iyhsly6B0Ix02X4mU2oXfn81eOISi5ntA"
+}
