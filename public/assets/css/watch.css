@@ -552,6 +552,7 @@
 .player__poster {
   z-index: 0;
   opacity: 0;
+  pointer-events: none;
   transition: opacity var(--duration) var(--ease);
 }
 
@@ -580,6 +581,13 @@
   place-items: center;
   padding: var(--space-4);
   overflow-y: auto;
+}
+
+/* An empty overlay is removed from the frame: it must not swallow clicks meant for an embedded
+   player's own controls, and Twitch refuses to play while any layer (even a transparent, empty
+   scroll container) lies over its player. */
+.player__overlay:empty {
+  display: none;
 }
 
 .player[data-state="empty"] .player__overlay {
