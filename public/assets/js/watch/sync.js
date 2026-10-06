@@ -399,8 +399,9 @@ export class SyncController {
     } else if (!shouldPlay && adapter.isPlaying()) {
       this.programmatic(() => adapter.pause());
     }
-    if (this.isLive()) {
-      // A live stream has one position for everyone: only play and pause are shared.
+    if (this.isLive() || adapter.isInAd?.()) {
+      // A live stream has one position for everyone: only play and pause are shared. During a
+      // platform's ad the recording waits; it is corrected once the ad is over.
       this.lastDrift = 0;
       return;
     }
@@ -596,7 +597,7 @@ export class SyncController {
   onPlayerEvent(type) {
     const adapter = this.adapter;
     const playback = this.effective();
-    if (adapter === null || playback === null || !this.status.ready) {
+    if (adapter === null || playback === null || !this.status.ready || adapter.isInAd?.()) {
       return;
     }
     if (
