@@ -42,8 +42,8 @@
         <form class="url-form" id="create-form" novalidate>
           <div class="url-form__field">
             <svg class="url-form__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
-            <label class="visually-hidden" for="create-url">Ссылка на видео (необязательно)</label>
-            <input class="url-form__input" id="create-url" name="url" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="2048" placeholder="Ссылка на видео — можно добавить позже" aria-describedby="create-hint">
+            <label class="visually-hidden" for="create-url">Ссылка на видео или название аниме (необязательно)</label>
+            <input class="url-form__input" id="create-url" name="url" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="2048" placeholder="Ссылка на видео или название аниме — можно позже" aria-describedby="create-hint">
           </div>
           <button class="btn btn--primary" type="submit" id="create-submit">
             <span class="spinner" aria-hidden="true"></span>
@@ -51,8 +51,9 @@
           </button>
         </form>
         <p class="form-hint" id="create-hint" aria-live="polite"></p>
+        <ul class="anime-results" id="create-results" aria-label="Аниме на AniLiberty" hidden></ul>
         <noscript><p class="form-hint">Для совместного просмотра нужен включённый JavaScript.</p></noscript>
-        <p class="start__compat">Работает с YouTube, ВКонтакте и другими площадками</p>
+        <p class="start__compat">Работает с YouTube, ВКонтакте, Twitch, аниме с AniLiberty и другими площадками</p>
       </section>
 
       <section class="w-steps w-container" aria-labelledby="steps-title">
@@ -148,6 +149,7 @@
               <span class="sync-badge__dot" aria-hidden="true"></span>
               <span class="room__note-text"></span>
             </p>
+            <div class="episode-bar" id="episode-bar" hidden></div>
           </div>
           <div class="room__actions">
             <button class="btn btn--secondary btn--sm" type="button" id="change-media" hidden>
@@ -270,9 +272,10 @@
       </button>
       <h2 class="w-dialog__title" id="source-title">Сменить видео</h2>
       <p class="w-dialog__text">Новое видео сразу появится у всех участников, на паузе.</p>
-      <label class="visually-hidden" for="source-url">Ссылка на видео</label>
-      <input class="w-field" id="source-url" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="2048" placeholder="Вставьте ссылку на видео" required aria-describedby="source-error">
+      <label class="visually-hidden" for="source-url">Ссылка на видео или название аниме</label>
+      <input class="w-field" id="source-url" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="2048" placeholder="Ссылка на видео или название аниме" required aria-describedby="source-error">
       <p class="w-field-error" id="source-error" aria-live="polite"></p>
+      <ul class="anime-results" id="source-results" aria-label="Аниме на AniLiberty" hidden></ul>
       <button class="btn btn--primary btn--block" type="submit" id="source-submit">
         <span class="spinner" aria-hidden="true"></span>
         <span class="btn__label">Показать всем</span>

@@ -3,6 +3,7 @@
 import { api } from '../../api.js';
 import { describeError } from '../../messages.js';
 import { roomErrorText } from '../messages.js';
+import { AnimeSearch, looksLikeUrl } from './anime-search.js';
 import { setBusy } from './dom.js';
 
 /**
@@ -27,7 +28,7 @@ export function sourceErrorText(error) {
 export class SourceDialog {
   /**
    * @param {{dialog: HTMLDialogElement, form: HTMLFormElement, input: HTMLInputElement, error: HTMLElement,
-   *   submit: HTMLButtonElement}} elements
+   *   submit: HTMLButtonElement, results: HTMLElement}} elements
    * @param {(ticket: string) => Promise<void>} apply sends media.set
    */
   constructor(elements, apply) {
@@ -41,26 +42,45 @@ export class SourceDialog {
     elements.input.addEventListener('input', () => {
       elements.error.textContent = '';
     });
+    this.search = new AnimeSearch(elements.results, (release) => this.choose(release.pageUrl));
   }
 
   open() {
     this.el.error.textContent = '';
+    this.search.clear();
     setBusy(this.el.submit, false, 'Показать всем');
     this.el.dialog.showModal();
     this.el.input.focus();
   }
 
   async submit() {
-    const url = this.el.input.value.trim();
-    if (url === '') {
-      this.el.error.textContent = 'Вставьте ссылку на видео.';
+    const text = this.el.input.value.trim();
+    if (text === '') {
+      this.el.error.textContent = 'Вставьте ссылку на видео или введите название аниме.';
       return;
     }
+    if (!looksLikeUrl(text)) {
+      setBusy(this.el.submit, true, 'Ищем…');
+      try {
+        await this.search.run(text);
+      } catch (e) {
+        this.el.error.textContent = sourceErrorText(e);
+      } finally {
+        setBusy(this.el.submit, false, 'Показать всем');
+      }
+      return;
+    }
+    await this.choose(text);
+  }
+
+  /** Resolves a link (pasted, or the page of a found title) and shows it to everyone. */
+  async choose(url) {
     setBusy(this.el.submit, true, 'Проверяем ссылку…');
     try {
       const { ticket } = await resolveSource(url);
       await this.apply(ticket);
       this.el.input.value = '';
+      this.search.clear();
       this.el.dialog.close();
     } catch (e) {
       this.el.error.textContent = sourceErrorText(e);

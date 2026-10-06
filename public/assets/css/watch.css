@@ -1945,3 +1945,100 @@
     display: none;
   }
 }
+
+/* ---------- AniLiberty: title search results and the episode bar ---------- */
+
+.anime-results {
+  display: grid;
+  gap: var(--space-2);
+  max-height: min(360px, 50vh);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  text-align: left;
+}
+
+.anime-results__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.anime-results__item:hover:not(:disabled),
+.anime-results__item:focus-visible {
+  border-color: var(--color-primary);
+}
+
+.anime-results__item:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.anime-results__poster {
+  flex: none;
+  width: 40px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  background: rgb(255 255 255 / 0.06);
+  object-fit: cover;
+}
+
+.anime-results__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.anime-results__title {
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.anime-results__meta,
+.anime-results__empty {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.anime-results__empty {
+  padding: var(--space-2);
+}
+
+.episode-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.episode-bar[hidden] {
+  display: none;
+}
+
+.episode-bar__select {
+  width: auto;
+  max-width: min(100%, 360px);
+  min-height: 36px;
+  padding-block: 6px;
+}
+
+.episode-bar__label {
+  color: var(--color-text);
+  font-weight: var(--weight-semibold);
+}
+
+.episode-bar__source {
+  color: var(--color-text-muted);
+}

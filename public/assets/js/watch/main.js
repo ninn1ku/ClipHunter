@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { formatBytes } from '../format.js';
 import { fallbackTitle, needsPreparation, playerQualityNote, serverFallbackUrl } from './kinds.js';
 import { MediaWatcher } from './media.js';
+import { AniLibertyPlayerAdapter } from './players/aniliberty.js';
 import { Html5PlayerAdapter } from './players/html5.js';
 import { TwitchPlayerAdapter } from './players/twitch.js';
 import { VkPlayerAdapter } from './players/vk.js';
@@ -15,6 +16,7 @@ import { identityStore, RoomSession } from './session.js';
 import { isHost, Store } from './store.js';
 import { participantsLabel } from './text.js';
 import { ChatView } from './views/chat.js';
+import { EpisodesView } from './views/episodes.js';
 import { PlayerControls } from './views/controls.js';
 import { HeaderView } from './views/header.js';
 import { NameDialog } from './views/join-dialog.js';
@@ -34,6 +36,7 @@ const ADAPTERS = {
   youtube: YouTubePlayerAdapter,
   vk: VkPlayerAdapter,
   twitch: TwitchPlayerAdapter,
+  aniliberty: AniLibertyPlayerAdapter,
   file: Html5PlayerAdapter,
 };
 
@@ -61,12 +64,14 @@ class WatchApp {
       input: $('source-url'),
       error: $('source-error'),
       submit: $('source-submit'),
+      results: $('source-results'),
     }, (ticket) => this.setMedia(ticket));
     this.start = new StartView({
       form: $('create-form'),
       input: $('create-url'),
       submit: $('create-submit'),
       hint: $('create-hint'),
+      results: $('create-results'),
     }, {
       askName: (onSubmit) =>
         this.nameDialog.open({ submitLabel: 'Создать комнату', cancellable: true, onSubmit }),
@@ -123,6 +128,14 @@ class WatchApp {
       },
       unlockAutoplay: () => this.sync.unlockAutoplay(),
       replay: () => this.sync.replay(),
+    });
+    this.episodes = new EpisodesView($('episode-bar'), {
+      choose: async (url) => {
+        const { ticket } = await resolveSource(url);
+        await this.setMedia(ticket);
+      },
+      toast: (message, options) => this.toasts.show(message, options),
+      errorText: (error) => sourceErrorText(error),
     });
     this.sync = new SyncController({
       request: (message) => this.request(message),
@@ -619,6 +632,7 @@ class WatchApp {
       status.nativeControls && status.overlay === 'autoplay' ? null : status.overlay,
     );
     this.renderSyncNote(status, state.connection);
+    this.episodes.render(state);
     const title = media === null
       ? 'Видео ещё не выбрано'
       : media.title ?? this.sync.status.title ?? fallbackTitle(media);

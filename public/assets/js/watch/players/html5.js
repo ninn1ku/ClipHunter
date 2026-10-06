@@ -38,7 +38,7 @@ export class Html5PlayerAdapter {
    * @param {{ref: string}} media
    * @param {{startSec?: number}} [options]
    */
-  load(media, { startSec = 0 } = {}) {
+  async load(media, { startSec = 0 } = {}) {
     const video = document.createElement('video');
     video.playsInline = true;
     video.setAttribute('playsinline', '');
@@ -71,16 +71,35 @@ export class Html5PlayerAdapter {
         resolve();
       }, { once: true });
       video.addEventListener('error', () => {
-        const code = video.error?.code === 4 ? 'MEDIA_UNSUPPORTED' : 'MEDIA_ERROR';
+        const code = this.errorCode(video);
         this.emit('error', { code });
         reject(new Error(code));
       });
+      this.fail = (code) => {
+        this.emit('error', { code });
+        reject(new Error(code));
+      };
     });
 
-    video.src = `/api/watch/media/${encodeURIComponent(media.ref)}/file`;
     this.mount.replaceChildren(video);
+    await this.attach(video, media, startSec);
 
     return ready;
+  }
+
+  /**
+   * Points the video at the media. Subclasses play other sources (AniLiberty: HLS from its CDN).
+   * @param {HTMLVideoElement} video
+   * @param {{ref: string}} media
+   * @param {number} _startSec
+   */
+  attach(video, media, _startSec) {
+    video.src = `/api/watch/media/${encodeURIComponent(media.ref)}/file`;
+  }
+
+  /** @param {HTMLVideoElement} video */
+  errorCode(video) {
+    return video.error?.code === 4 ? 'MEDIA_UNSUPPORTED' : 'MEDIA_ERROR';
   }
 
   play() {
