@@ -787,12 +787,13 @@ HTTP → HTTPS-редирект и сертификат; главная стра
 Браузер /watch, /watch/{roomId}  ──fetch──▶ Nginx /api/watch/* ──▶ PHP-FPM (WatchSourceService, WatchMediaService)
         │                                                              │ тикет (HMAC-SHA256, ROOMS_SECRET)
         └──WebSocket wss://…/ws/rooms──▶ Nginx ──▶ 127.0.0.1:8790 Deno (rooms/: Gateway → Connection → Room)
-YouTube: iframe youtube-nocookie.com (сервер не участвует). Остальные площадки: воркер → downloads/<id>/media.mp4 → X-Accel.
+YouTube, VK Видео, Twitch: официальные встроенные плееры; AniLiberty: HLS с их CDN в <video> (сервер не участвует).
+Остальные площадки: воркер → downloads/<id>/media.mp4 → X-Accel.
 ```
 
-- **PHP** (`src/Watch/`): `POST /api/watch/sources` разбирает YouTube-ссылки без yt-dlp (`YouTubeId`), остальное отдаёт в `AnalyzeService` и ставит задание `purpose=watch` с наибольшим вариантом ≤ `WATCH_MAX_HEIGHT`. Ответ содержит тикет (`MediaTicket`). `GET /api/watch/media/{id}` — статус подготовки, `/file` — файл inline (X-Accel или PHP с Range в dev). Watch-задания невидимы для `/api/downloads/*`; файлы хранятся `WATCH_FILE_RETENTION_MIN`.
+- **PHP** (`src/Watch/`, `src/AniLiberty/`): `POST /api/watch/sources` разбирает ссылки YouTube, VK Видео и Twitch без yt-dlp (`YouTubeId`, `VkVideoId`, `TwitchRef`), ссылки AniLiberty — через их публичный API (`AniLibertyClient`), остальное отдаёт в `AnalyzeService` и ставит задание `purpose=watch` с наибольшим вариантом ≤ `WATCH_MAX_HEIGHT`. Ответ содержит тикет (`MediaTicket`). `GET /api/watch/media/{id}` — статус подготовки, `/file` — файл inline (X-Accel или PHP с Range в dev). Watch-задания невидимы для `/api/downloads/*`; файлы хранятся `WATCH_FILE_RETENTION_MIN`.
 - **Deno** (`rooms/`): `domain/` (Room, Registry, playback, text), `security/` (тикеты через WebCrypto, id и хэши токенов, rate limit), `persistence/snapshot.ts`, `protocol.ts`, `connection.ts`, `server.ts`, `main.ts`. Ноль внешних зависимостей, только Web API, `Deno.*` и `node:crypto`.
-- **Фронтенд** (`public/watch.html`, `public/assets/js/watch/`): `session.js` (resume/join/create, переподключение), `room-client.js` (WS, reqId → Promise, backoff), `store.js` (чистый редьюсер), `clock.js` и `playback.js` (чистая математика), `sync.js` (SyncController), `players/` (HTML5 и YouTube-адаптеры), `views/`.
+- **Фронтенд** (`public/watch.html`, `public/assets/js/watch/`): `session.js` (resume/join/create, переподключение), `room-client.js` (WS, reqId → Promise, backoff), `store.js` (чистый редьюсер), `clock.js` и `playback.js` (чистая математика), `sync.js` (SyncController), `players/` (адаптеры HTML5, YouTube, VK, Twitch, AniLiberty), `kinds.js` (факты о kind: подготовка на сервере, fallback-ссылка), `views/`.
 
 ### Отклонения от плана и найденные факты
 
@@ -808,9 +809,38 @@ YouTube: iframe youtube-nocookie.com (сервер не участвует). О�
 | Рендер | Комната перерисовывается дважды в секунду ради часов плеера. Пересборка списка участников на каждом тике останавливала видеодекодер Chrome (`DECODER_UNDERFLOW`, через 3–7 с после старта при двух участниках, воспроизводилось и в обычном окне). Представления чата и участников теперь рисуют только при изменении входных данных из неизменяемого стора. Слои плеера, которые обновляются поверх видео (чип, бейдж, центральная кнопка), не используют `backdrop-filter`. |
 | Синхронизация (замер) | Два окна Chrome, файловый режим: расхождение после play / pause / seek 0.00–0.09 с, установившееся ±0.013 с на 13 с. YouTube: play/pause одного доходят до другого, название берётся из плеера. Нагрузка локально: 50 комнат × 5 клиентов, p95 рассылки 11 мс, без ошибок и разрывов. |
 
+### Источники, которые играют в браузере
+
+Ведущий вставляет ссылку (или название аниме), PHP выдаёт тикет только с идентификаторами — длинные URL в кадр 4096 байт не помещаются. Шаблоны `ref` по kind закреплены в `tests/fixtures/watch/ticket-v1.json` и проверяются PHPUnit (`WatchSourceKind::refPattern()`) и `deno test` (`REF_PATTERN` в `rooms/src/security/ticket.ts`, тот же шаблон проверяется при чтении снапшота).
+
+| kind | ref | Плеер | Синхронизация |
+|---|---|---|---|
+| `youtube` | id видео | IFrame API, наши контролы | перемотка при расхождении > 1 с |
+| `vk` | `owner_video` | `vk.ru/video_ext.php?js_api=1` + `VK.VideoPlayer`, наши контролы | перемотка > 1 с; во время рекламы наши контролы убираются |
+| `twitch` | `video:<id>` / `channel:<login>` | `Twitch.Player`, **родные контролы Twitch** | запись — перемотка > 1 с; эфир — только play/pause |
+| `aniliberty` | `release:episode_uuid` | `<video>` + hls.js, поток с `*.libria.fun` | как у файлов: rate ±10 % и перемотка > 0.5 с |
+| `file` | id задания | `<video>` с нашего сервера | rate и перемотка |
+
+Что умеет плеер, объявляет сам адаптер (`capabilities`: rate, окно перемотки, защитное окно после seek, проверка автоплея, родные контролы; методы субтитров, качества, `isLive`). `sync.js`, контролы и меню качества спрашивают адаптер и не проверяют площадку.
+
+Найдено при реализации (Chrome 154, 2026-10-06):
+
+| Тема | Факт и решение |
+|---|---|
+| VK: время | Документация обещает целые секунды, embed присылает дробные, но только на тиках `timeupdate`. `CoarseClock` (чистый модуль) экстраполирует позицию между отчётами; окно перемотки 1 с, как у YouTube. Замер: 0.0–0.3 с после play/seek/F5. |
+| VK: рукопожатие | Embed сам шлёт `inited` при старте, часто до события `load` у iframe, и может отвечать 6–11 с. `VK.VideoPlayer` создаётся сразу после вставки iframe и повторно на `load`, пока ответа нет; таймаут 30 с → `VK_UNAVAILABLE` и fallback «Подготовить через сервер». Скрипт API шире документации: есть `seeked`, `errorCode`, `autoplaySoundProhibited`. |
+| Twitch: условия | Плеер нельзя перекрывать, контролы только его (минимум 400×300). Адаптер объявляет `nativeControls`: наш UI над ним не рисуется, действия участников приходят событиями PLAY/PAUSE/SEEK, статус и подсказки — под видео (`#sync-note`). |
+| Twitch: перекрытие | Twitch молча не запускает воспроизведение, пока над iframe лежит любой слой, даже пустой прозрачный `overflow:auto`. Пустой `.player__overlay` теперь `display:none`, постер не принимает указатель. |
+| Twitch: состояние | `isPaused()` до первого старта возвращает `false`; состояние берётся из событий. Позиция обновляется раз в ~1 с → тоже `CoarseClock`. |
+| Twitch: referrer | `embed/v1.js` копирует `location.href` в адрес iframe. Плеер создаётся, пока в адресной строке `/watch` (`history.replaceState`), — id комнаты не уходит в Twitch. |
+| Twitch: клипы | У клипов нет JS API: они по-прежнему готовятся сервером (yt-dlp, файловый режим). |
+| AniLiberty | API v1 (`aniliberty.top/api/v1`, локально `api.anilibria.app`): серия отдаёт `hls_480/720/1080`. CDN отвечает `Access-Control-Allow-Origin` нашего домена, сегменты — через 302 на `cache-cloud*.libria.fun`. Наш сервер поток не скачивает и не проксирует. Опубликованных условий API нет; их собственный плеер показывает VAST-рекламу, наш — нет (решение владельца: играть с атрибуцией, ссылка «Тайтл на AniLiberty»). Тайтлы, которые AniLiberty блокирует сам (`is_blocked_by_geo/copyrights`), отклоняются. |
+| HLS | Chrome 154 отвечает `maybe` на `canPlayType('application/vnd.apple.mpegurl')`, но эти плейлисты не играет (`MEDIA_ERR_SRC_NOT_SUPPORTED`). Поэтому везде, где есть MSE, — hls.js 1.7.3 (light, Apache-2.0, `public/assets/vendor/hls.js/`, без воркера); нативный HLS — только без MSE (старые iOS). |
+| Запросы к AniLiberty | `UrlValidator::validateServiceUrl`: https, хост из `config/aniliberty.php`, только публичные адреса; curl без редиректов, 10 с, ≤ 2 МБ. Эндпоинты `GET /api/watch/aniliberty/search`, `/releases/{id}`, `/episodes/{uuid}` под общим лимитом `RATE_LIMIT_WATCH_ANIME`. |
+
 ### Production
 
-- Nginx: `location = /ws/rooms` (Upgrade, `X-Real-IP`, `limit_conn ch_ws 6`, таймауты 120 с), `^~ /api/watch/` с `limit_req ch_watch`, `/watch` и `/watch/{roomId}` → `watch.html` со сниппетом `cliphunter-watch-headers.conf` (CSP с YouTube и `wss://домен`, `Referrer-Policy: strict-origin-when-cross-origin` — без Referer YouTube-embed не играет, ошибка 153). В access-логе `roomId` заменяется на `/watch/:room`.
+- Nginx: `location = /ws/rooms` (Upgrade, `X-Real-IP`, `limit_conn ch_ws 6`, таймауты 120 с), `^~ /api/watch/` с `limit_req ch_watch`, `/watch` и `/watch/{roomId}` → `watch.html` со сниппетом `cliphunter-watch-headers.conf` (CSP: скрипты и фреймы YouTube, `vk.ru`, `player.twitch.tv`; `media-src`/`connect-src` `*.libria.fun` и `blob:` для потоков AniLiberty; `wss://домен`; `Referrer-Policy: strict-origin-when-cross-origin` — без Referer YouTube-embed не играет, ошибка 153). В access-логе `roomId` заменяется на `/watch/:room`.
 - Кэш ассетов: `Cache-Control` берётся из `map $arg_v` — с `?v=<sha>` год и `immutable`, без версии (вложенные ES-модули) `no-cache` с ревалидацией по ETag. Раньше вложенные модули кэшировались на год и после деплоя могли смешаться со старыми.
 - `/_files/` больше не добавляет свой `Cache-Control`: заголовок задаёт PHP (`no-store` для скачиваний, `private, max-age=3600` для файлов комнат, которые `<video>` перечитывает Range-запросами).
 - systemd `cliphunter-rooms.service`: пользователь `cliphunter`, Deno с `--allow-net=127.0.0.1:8790`, `--allow-env` только на нужные переменные, чтение и запись только `storage/rooms`; песочница как у воркера, `MemoryMax=192M`, `CPUQuota=50%`.
