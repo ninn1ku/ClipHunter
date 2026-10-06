@@ -110,3 +110,50 @@ export function preparationErrorText(code, fallback) {
 
   return texts[code] ?? fallback ?? 'Не удалось подготовить видео.';
 }
+
+/**
+ * Player errors (SyncStatus.overlay.error). embedRefused: the platform will not play the video on
+ * our site, so the host may let our server prepare it instead (when the kind allows that).
+ */
+const PLAYER_ERRORS = {
+  YT_2: { text: 'Плеер YouTube не принял ссылку на видео.' },
+  YT_5: { text: 'Плеер YouTube не смог воспроизвести видео в этом браузере.' },
+  YT_100: { text: 'Видео недоступно: его удалили или сделали приватным.' },
+  YT_101: { text: 'Владелец запретил показывать это видео на других сайтах.', embedRefused: true },
+  YT_150: { text: 'Владелец запретил показывать это видео на других сайтах.', embedRefused: true },
+  YT_153: { text: 'Плеер YouTube не получил адрес страницы. Обновите страницу.' },
+  YT_API_UNAVAILABLE: { text: 'Не удалось загрузить плеер YouTube. Проверьте, не блокирует ли его браузер.' },
+  VK_API_UNAVAILABLE: {
+    text: 'Не удалось загрузить плеер ВКонтакте. Проверьте, не блокирует ли его браузер.',
+  },
+  VK_UNAVAILABLE: {
+    text:
+      'ВКонтакте не показывает это видео на других сайтах: оно удалено, закрыто или доступно только после входа.',
+    embedRefused: true,
+  },
+  TWITCH_API_UNAVAILABLE: {
+    text: 'Не удалось загрузить плеер Twitch. Проверьте, не блокирует ли его браузер.',
+  },
+  TWITCH_UNAVAILABLE: {
+    text:
+      'Twitch не показывает эту запись на других сайтах: она удалена, только для подписчиков или требует входа.',
+    embedRefused: true,
+  },
+  ANILIBERTY_UNAVAILABLE: { text: 'Не удалось получить серию с AniLiberty. Попробуйте позже.' },
+  HLS_UNSUPPORTED: { text: 'Этот браузер не умеет воспроизводить потоковое видео (HLS).' },
+  HLS_NETWORK: { text: 'Поток видео не загружается. Проверьте подключение и обновите страницу.' },
+  MEDIA_UNSUPPORTED: { text: 'Браузер не может воспроизвести этот файл.' },
+};
+
+/**
+ * @param {string} code
+ * @returns {{text: string, embedRefused: boolean}}
+ */
+export function playerErrorText(code) {
+  const entry = PLAYER_ERRORS[code];
+
+  return {
+    text: entry?.text ?? 'Не удалось воспроизвести видео.',
+    embedRefused: entry?.embedRefused === true,
+  };
+}

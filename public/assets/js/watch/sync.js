@@ -5,11 +5,21 @@
 //   with the expected position and fix status and drift (seek, or nudge the HTML5 rate).
 // - Intents from our controls are sent at once and applied optimistically until the server's
 //   state (higher seq) arrives. Seeks from the slider go out at most 4 times a second.
-// - Actions that bypass our controls (a click on the YouTube iframe, media keys, native iOS
-//   controls) are recognised as play/pause/seek events we did not cause and sent as intents.
+// - Actions that bypass our controls (a click on an embedded player, the platform's own controls,
+//   media keys, native iOS controls) are recognised as play/pause/seek events we did not cause
+//   and sent as intents.
+// - What a player can do (rate nudging, seek window, captions, quality, live) is declared by its
+//   adapter (adapter.capabilities and optional methods), never inferred from the platform.
 
 import { clientNow, ClockSync } from './clock.js';
-import { decideCorrection, expectedPosition, inSyncWindow, isAtEnd, SEEK_FREEZE_MS } from './playback.js';
+import {
+  decideCorrection,
+  expectedPosition,
+  inSyncWindow,
+  isAtEnd,
+  PRECISE_PLAYER,
+  SEEK_FREEZE_MS,
+} from './playback.js';
 
 const TICK_MS = 500;
 const PAUSED_CHECK_MS = 2000;
@@ -21,7 +31,6 @@ const PING_INTERVAL_MS = 20000;
 const SEEK_SEND_INTERVAL_MS = 250;
 const OPTIMISTIC_TTL_MS = 4000;
 const EXTERNAL_SEEK_SEC = 1.0;
-const YOUTUBE_SEEK_GUARD_MS = 2500;
 const CAPTIONS_KEY = 'ch:captions';
 
 /**
@@ -29,6 +38,7 @@ const CAPTIONS_KEY = 'ch:captions';
  *   ready: boolean, playing: boolean, position: number, duration: number|null,
  *   volume: number, muted: boolean, badge: 'offline'|'syncing'|'synced',
  *   overlay: null|'loading'|'autoplay'|'ended'|{error: string}, title: string|null, buffering: boolean,
+ *   live?: boolean, captions?: string|null,
  * }} SyncStatus
  */
 
@@ -38,7 +48,7 @@ export class SyncController {
    *   request: (message: object) => Promise<any>,
    *   send: (message: object) => boolean,
    *   mount: HTMLElement,
-   *   createAdapter: (kind: 'youtube'|'file', mount: HTMLElement) => any,
+   *   createAdapter: (kind: string, mount: HTMLElement) => any,
    *   onChange: () => void,
    *   onError: (code: string) => void,
    * }} deps
@@ -90,6 +100,7 @@ export class SyncController {
       overlay: null,
       title: null,
       buffering: false,
+      live: false,
     };
   }
 
@@ -169,7 +180,7 @@ export class SyncController {
 
   /** From the progress slider (on release) and keyboard shortcuts; throttled to 4 per second. */
   seekTo(seconds) {
-    if (this.adapter === null) {
+    if (this.adapter === null || this.isLive()) {
       return;
     }
     const duration = this.duration();
@@ -178,7 +189,7 @@ export class SyncController {
     this.programmatic(() => {
       this.pendingSeek = target;
       this.adapter.seek(target);
-    }, this.adapter.kind === 'youtube' ? YOUTUBE_SEEK_GUARD_MS : OWN_ACTION_WINDOW_MS);
+    }, this.adapter.capabilities.seekGuardMs);
     this.pendingSeekTarget = target;
     const wait = this.lastSeekSent + SEEK_SEND_INTERVAL_MS - Date.now();
     clearTimeout(this.seekTimer);
@@ -243,6 +254,26 @@ export class SyncController {
     return this.adapter?.enterNativeFullscreen?.() ?? false;
   }
 
+  /** A live stream: no seeking, no shared position. */
+  isLive() {
+    return this.adapter?.isLive?.() ?? false;
+  }
+
+  /**
+   * The player's own quality choice (per member, nothing is sent to the room), or null when the
+   * adapter offers none.
+   * @returns {{current: string|null, options: Array<{id: string, label: string}>}|null}
+   */
+  playerQualities() {
+    return this.status.ready ? this.adapter?.getQualities?.() ?? null : null;
+  }
+
+  /** @param {string} id */
+  setPlayerQuality(id) {
+    this.adapter?.setQuality?.(id);
+    this.refreshStatus();
+  }
+
   /** The media id this member is playing (the room's file or a chosen variant of it). */
   currentRef() {
     return this.media?.ref ?? null;
@@ -261,7 +292,7 @@ export class SyncController {
     this.deps.onChange();
   }
 
-  // ---------- Captions (YouTube only) ----------
+  // ---------- Captions (adapters with getCaptions/setCaptions) ----------
 
   /** Saved choice: 'off' (default) or a language code. */
   captionPreference() {
@@ -301,7 +332,7 @@ export class SyncController {
   applyCaptionPreference() {
     const adapter = this.adapter;
     const now = Date.now();
-    if (adapter?.kind !== 'youtube' || now - (this.captionsAppliedAt ?? 0) < 2000) {
+    if (typeof adapter?.setCaptions !== 'function' || now - (this.captionsAppliedAt ?? 0) < 2000) {
       return;
     }
     this.captionsAppliedAt = now;
@@ -360,22 +391,27 @@ export class SyncController {
     } else if (!shouldPlay && adapter.isPlaying()) {
       this.programmatic(() => adapter.pause());
     }
+    if (this.isLive()) {
+      // A live stream has one position for everyone: only play and pause are shared.
+      this.lastDrift = 0;
+      return;
+    }
 
     const drift = adapter.getCurrentTime() - expected;
     this.lastDrift = drift;
     const decision = hardSeek && Math.abs(drift) > 0.05 ? { action: 'seek' } : decideCorrection({
       drift,
-      kind: adapter.kind,
+      player: adapter.capabilities,
       frozen: now < this.frozenUntil,
       rateCorrecting: this.rateCorrecting,
     });
 
     if (decision.action === 'seek') {
-      // A YouTube seek can take a while to settle and passes through play states: guard longer.
+      // An embedded player's seek can take a while to settle and passes through play states.
       this.programmatic(() => {
         this.pendingSeek = expected;
         adapter.seek(expected);
-      }, adapter.kind === 'youtube' ? YOUTUBE_SEEK_GUARD_MS : OWN_ACTION_WINDOW_MS);
+      }, adapter.capabilities.seekGuardMs);
       this.frozenUntil = now + SEEK_FREEZE_MS;
       if (this.rateCorrecting) {
         adapter.setRate(1);
@@ -402,7 +438,7 @@ export class SyncController {
         }
       });
     });
-    if (adapter.kind === 'youtube') {
+    if (adapter.capabilities.autoplayProbe) {
       clearTimeout(this.autoplayTimer);
       this.autoplayTimer = setTimeout(() => {
         if (
@@ -524,8 +560,8 @@ export class SyncController {
         this.status.overlay = null;
       }
       this.setPresence('watching');
-      // The file player starts at 0: jump to the room. YouTube already got the start offset.
-      this.apply(true, adapter.kind === 'html5');
+      // A precise player jumps exactly to the room; embeds already got the start offset.
+      this.apply(true, adapter.capabilities.rate);
       this.refreshStatus();
     }).catch((e) => {
       if (this.adapter === adapter) {
@@ -564,7 +600,8 @@ export class SyncController {
     } else if (type === 'pause' && playback.status === 'playing') {
       this.command('pause', adapter.getCurrentTime());
     } else if (
-      type === 'seeked' && Math.abs(adapter.getCurrentTime() - this.expected()) > EXTERNAL_SEEK_SEC
+      type === 'seeked' && !this.isLive() &&
+      Math.abs(adapter.getCurrentTime() - this.expected()) > EXTERNAL_SEEK_SEC
     ) {
       this.seekTo(adapter.getCurrentTime());
     }
@@ -634,7 +671,10 @@ export class SyncController {
       s.position = adapter.getCurrentTime();
       s.duration = this.duration();
       s.title = adapter.getTitle?.() ?? null;
-      s.captions = adapter.kind === 'youtube' ? (adapter.getCaptions?.().active ?? null) : undefined;
+      s.live = this.isLive();
+      s.captions = typeof adapter.getCaptions === 'function'
+        ? (adapter.getCaptions().active ?? null)
+        : undefined;
       if (!(s.overlay !== null && typeof s.overlay === 'object')) {
         s.overlay = this.autoplayBlocked ? 'autoplay' : this.atEnd() && playback !== null ? 'ended' : null;
       }
@@ -647,7 +687,8 @@ export class SyncController {
     } else if (!s.ready || s.buffering || Date.now() < this.frozenUntil) {
       s.badge = 'syncing';
     } else {
-      s.badge = playback?.status !== 'playing' || inSyncWindow(this.lastDrift, adapter?.kind ?? 'html5')
+      s.badge = playback?.status !== 'playing' ||
+          inSyncWindow(this.lastDrift, adapter?.capabilities ?? PRECISE_PLAYER)
         ? 'synced'
         : 'syncing';
     }

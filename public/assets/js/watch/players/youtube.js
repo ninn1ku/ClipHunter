@@ -4,6 +4,8 @@
 // Error codes from the player: 2 bad parameter, 5 HTML5 player error, 100 not found / private,
 // 101 and 150 embedding disabled by the owner, 153 the embed got no Referer (check Referrer-Policy).
 
+import { EMBED_PLAYER } from '../playback.js';
+
 const API_URL = 'https://www.youtube.com/iframe_api';
 const STATE = { ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3 };
 
@@ -38,6 +40,7 @@ export class YouTubePlayerAdapter {
   /** @param {HTMLElement} mount */
   constructor(mount) {
     this.kind = 'youtube';
+    this.capabilities = EMBED_PLAYER;
     this.mount = mount;
     this.player = null;
     this.ready = false;

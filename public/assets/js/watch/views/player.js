@@ -1,7 +1,8 @@
 // The player area: overlays for every non-playing state (no video yet, preparing a file, errors)
 // and, once media is playable, the stage where a player adapter mounts its element.
 
-import { preparationErrorText } from '../messages.js';
+import { needsPreparation, serverFallbackUrl } from '../kinds.js';
+import { playerErrorText, preparationErrorText } from '../messages.js';
 import { el, icon, setBusy } from './dom.js';
 import { sourceErrorText } from './source-dialog.js';
 
@@ -177,18 +178,10 @@ export class PlayerView {
       ];
     }
 
-    const code = overlay.error;
-    const embedBlocked = code === 'YT_101' || code === 'YT_150';
-    const texts = {
-      YT_100: 'Видео недоступно: его удалили или сделали приватным.',
-      YT_101: 'Владелец запретил показывать это видео на других сайтах.',
-      YT_150: 'Владелец запретил показывать это видео на других сайтах.',
-      YT_153: 'Плеер YouTube не получил адрес страницы. Обновите страницу.',
-      YT_API_UNAVAILABLE: 'Не удалось загрузить плеер YouTube. Проверьте, не блокирует ли его браузер.',
-      MEDIA_UNSUPPORTED: 'Браузер не может воспроизвести этот файл.',
-    };
+    const { text, embedRefused } = playerErrorText(overlay.error);
+    const fallback = embedRefused && serverFallbackUrl(media) !== null;
     let action;
-    if (host && embedBlocked && media?.kind === 'youtube') {
+    if (host && fallback) {
       const button = el(
         'button',
         { className: 'btn btn--primary btn--sm', attrs: { type: 'button' } },
@@ -216,7 +209,7 @@ export class PlayerView {
     } else {
       action = el('p', {
         className: 'stage-card__text',
-        text: embedBlocked
+        text: fallback
           ? 'Ведущий может подготовить видео через наш сервер.'
           : 'Ведущий может выбрать другое видео.',
       });
@@ -231,7 +224,7 @@ export class PlayerView {
           attrs: { 'aria-hidden': 'true' },
         }, icon('alert')),
         el('p', { className: 'stage-card__title', text: 'Видео не воспроизводится' }),
-        el('p', { className: 'stage-card__text', text: texts[code] ?? 'Не удалось воспроизвести видео.' }),
+        el('p', { className: 'stage-card__text', text }),
         action,
       ),
     ];
@@ -343,7 +336,7 @@ export function stageKind(media, preparation) {
   if (media === null) {
     return 'empty';
   }
-  if (media.kind === 'youtube') {
+  if (!needsPreparation(media)) {
     return 'ready';
   }
   switch (preparation?.status) {

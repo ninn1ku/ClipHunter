@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import {
   decideCorrection,
+  EMBED_PLAYER,
   expectedPosition,
   inSyncWindow,
   isAtEnd,
+  PRECISE_PLAYER,
 } from '../../public/assets/js/watch/playback.js';
 
 const T0 = 1_800_000_000_000;
@@ -19,38 +21,41 @@ Deno.test('expected position advances while playing and is clamped', () => {
 });
 
 Deno.test('html5: seek above 0.5 s, nudge the rate between 0.06 and 0.5 s', () => {
-  assert.deepEqual(decideCorrection({ drift: 0.51, kind: 'html5' }), { action: 'seek' });
-  assert.deepEqual(decideCorrection({ drift: -0.51, kind: 'html5' }), { action: 'seek' });
-  assert.deepEqual(decideCorrection({ drift: 0.5, kind: 'html5' }), { action: 'rate', rate: 0.9 });
-  assert.deepEqual(decideCorrection({ drift: -0.5, kind: 'html5' }), { action: 'rate', rate: 1.1 });
-  assert.deepEqual(decideCorrection({ drift: 0.25, kind: 'html5' }), { action: 'rate', rate: 0.95 });
-  assert.deepEqual(decideCorrection({ drift: 0.061, kind: 'html5' }), { action: 'rate', rate: 0.988 });
-  assert.deepEqual(decideCorrection({ drift: 0.06, kind: 'html5' }), { action: 'none' });
-  assert.deepEqual(decideCorrection({ drift: 0.02, kind: 'html5', rateCorrecting: true }), {
+  assert.deepEqual(decideCorrection({ drift: 0.51, player: PRECISE_PLAYER }), { action: 'seek' });
+  assert.deepEqual(decideCorrection({ drift: -0.51, player: PRECISE_PLAYER }), { action: 'seek' });
+  assert.deepEqual(decideCorrection({ drift: 0.5, player: PRECISE_PLAYER }), { action: 'rate', rate: 0.9 });
+  assert.deepEqual(decideCorrection({ drift: -0.5, player: PRECISE_PLAYER }), { action: 'rate', rate: 1.1 });
+  assert.deepEqual(decideCorrection({ drift: 0.25, player: PRECISE_PLAYER }), { action: 'rate', rate: 0.95 });
+  assert.deepEqual(decideCorrection({ drift: 0.061, player: PRECISE_PLAYER }), {
+    action: 'rate',
+    rate: 0.988,
+  });
+  assert.deepEqual(decideCorrection({ drift: 0.06, player: PRECISE_PLAYER }), { action: 'none' });
+  assert.deepEqual(decideCorrection({ drift: 0.02, player: PRECISE_PLAYER, rateCorrecting: true }), {
     action: 'rate',
     rate: 1,
   });
 });
 
 Deno.test('youtube: seek only above 1 s, never touch the rate', () => {
-  assert.deepEqual(decideCorrection({ drift: 1.01, kind: 'youtube' }), { action: 'seek' });
-  assert.deepEqual(decideCorrection({ drift: -1.01, kind: 'youtube' }), { action: 'seek' });
-  assert.deepEqual(decideCorrection({ drift: 1, kind: 'youtube' }), { action: 'none' });
-  assert.deepEqual(decideCorrection({ drift: 0.3, kind: 'youtube', rateCorrecting: true }), {
+  assert.deepEqual(decideCorrection({ drift: 1.01, player: EMBED_PLAYER }), { action: 'seek' });
+  assert.deepEqual(decideCorrection({ drift: -1.01, player: EMBED_PLAYER }), { action: 'seek' });
+  assert.deepEqual(decideCorrection({ drift: 1, player: EMBED_PLAYER }), { action: 'none' });
+  assert.deepEqual(decideCorrection({ drift: 0.3, player: EMBED_PLAYER, rateCorrecting: true }), {
     action: 'none',
   });
 });
 
 Deno.test('corrections are frozen right after a seek and ignore NaN', () => {
-  assert.deepEqual(decideCorrection({ drift: 5, kind: 'html5', frozen: true }), { action: 'none' });
-  assert.deepEqual(decideCorrection({ drift: Number.NaN, kind: 'html5' }), { action: 'none' });
+  assert.deepEqual(decideCorrection({ drift: 5, player: PRECISE_PLAYER, frozen: true }), { action: 'none' });
+  assert.deepEqual(decideCorrection({ drift: Number.NaN, player: PRECISE_PLAYER }), { action: 'none' });
 });
 
 Deno.test('end detection and the sync window', () => {
   assert.ok(isAtEnd(599.75, 600));
   assert.ok(!isAtEnd(599.7, 600));
   assert.ok(!isAtEnd(1e9, null));
-  assert.ok(inSyncWindow(0.2, 'html5'));
-  assert.ok(!inSyncWindow(0.3, 'html5'));
-  assert.ok(inSyncWindow(0.9, 'youtube'));
+  assert.ok(inSyncWindow(0.2, PRECISE_PLAYER));
+  assert.ok(!inSyncWindow(0.3, PRECISE_PLAYER));
+  assert.ok(inSyncWindow(0.9, EMBED_PLAYER));
 });

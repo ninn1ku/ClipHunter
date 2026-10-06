@@ -2,14 +2,45 @@
 
 /** Drift (seconds) tolerated before any correction: inside it the room counts as in sync. */
 export const IN_SYNC_SEC = 0.06;
-/** HTML5: beyond this drift we seek; below it we nudge playbackRate. */
+/** Players that can nudge playbackRate: beyond this drift we seek; below it we nudge the rate. */
 export const HTML5_SEEK_SEC = 0.5;
-/** YouTube cannot change rate smoothly through the API, so it only seeks, with a wider window. */
+/** Embedded players cannot change rate smoothly through their APIs, so they only seek, with a wider window. */
 export const YOUTUBE_SEEK_SEC = 1.0;
 /** After a seek, corrections pause while the player settles. */
 export const SEEK_FREEZE_MS = 1500;
 /** Near the end the room counts as finished ("Смотреть заново"). */
 export const END_MARGIN_SEC = 0.25;
+
+/**
+ * What a player adapter declares about itself (adapter.capabilities). Sync logic and views ask
+ * these questions instead of checking the platform.
+ *
+ * @typedef {{
+ *   rate: boolean,          // playbackRate can be nudged smoothly: fine drift correction
+ *   seekSec: number,        // without rate: drift beyond which the player is seeked
+ *   seekGuardMs: number,    // after our own seek, player events of this long are ours
+ *   autoplayProbe: boolean, // play() does not report a blocked autoplay: check the state after a while
+ *   nativeControls: boolean, // the platform's own controls stay visible; ours are not drawn over the video
+ * }} Capabilities
+ */
+
+/** A <video> element we control completely. */
+export const PRECISE_PLAYER = Object.freeze({
+  rate: true,
+  seekSec: HTML5_SEEK_SEC,
+  seekGuardMs: 700,
+  autoplayProbe: false,
+  nativeControls: false,
+});
+
+/** An embedded iframe player driven through postMessage: seeks only, slower to settle. */
+export const EMBED_PLAYER = Object.freeze({
+  rate: false,
+  seekSec: YOUTUBE_SEEK_SEC,
+  seekGuardMs: 2500,
+  autoplayProbe: true,
+  nativeControls: false,
+});
 
 /**
  * Where the room should be now.
@@ -30,17 +61,18 @@ export function expectedPosition(playback, serverNow, durationSec) {
 /**
  * What to do about a drift (positive = we are ahead of the room).
  *
- * @param {{drift: number, kind: 'html5'|'youtube', frozen?: boolean, rateCorrecting?: boolean}} input
+ * @param {{drift: number, player: Pick<Capabilities, 'rate'|'seekSec'>, frozen?: boolean,
+ *   rateCorrecting?: boolean}} input
  * @returns {{action: 'none'} | {action: 'seek'} | {action: 'rate', rate: number}}
  */
-export function decideCorrection({ drift, kind, frozen = false, rateCorrecting = false }) {
+export function decideCorrection({ drift, player, frozen = false, rateCorrecting = false }) {
   if (!Number.isFinite(drift) || frozen) {
     return { action: 'none' };
   }
   const size = Math.abs(drift);
 
-  if (kind === 'youtube') {
-    return size > YOUTUBE_SEEK_SEC ? { action: 'seek' } : { action: 'none' };
+  if (!player.rate) {
+    return size > player.seekSec ? { action: 'seek' } : { action: 'none' };
   }
   if (size > HTML5_SEEK_SEC) {
     return { action: 'seek' };
@@ -62,7 +94,11 @@ export function isAtEnd(expected, durationSec) {
   return durationSec !== null && durationSec > 0 && expected >= durationSec - END_MARGIN_SEC;
 }
 
-/** Whether the drift is inside the window the sync badge calls "Синхронизировано". */
-export function inSyncWindow(drift, kind) {
-  return Math.abs(drift) <= (kind === 'youtube' ? YOUTUBE_SEEK_SEC : HTML5_SEEK_SEC / 2);
+/**
+ * Whether the drift is inside the window the sync badge calls "Синхронизировано".
+ * @param {number} drift
+ * @param {Pick<Capabilities, 'rate'|'seekSec'>} player
+ */
+export function inSyncWindow(drift, player) {
+  return Math.abs(drift) <= (player.rate ? HTML5_SEEK_SEC / 2 : player.seekSec);
 }

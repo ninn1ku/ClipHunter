@@ -4,11 +4,16 @@
 //   load(media, {startSec}) → Promise; play() → Promise; pause(); seek(sec); getCurrentTime(); getDuration();
 //   isPlaying(); setVolume(0..1); getVolume(); setMuted(b); isMuted(); setRate(r); destroy();
 //   on('ready'|'play'|'pause'|'seeked'|'buffering'|'playing'|'ended'|'error'|'timeupdate', cb)
+// and declares what it can do in `capabilities` (see playback.js). Optional: getCaptions/loadCaptions/
+// setCaptions, getQualities/setQuality, isLive, getTitle, enterNativeFullscreen.
+
+import { PRECISE_PLAYER } from '../playback.js';
 
 export class Html5PlayerAdapter {
   /** @param {HTMLElement} mount */
   constructor(mount) {
     this.kind = 'html5';
+    this.capabilities = PRECISE_PLAYER;
     this.mount = mount;
     /** @type {HTMLVideoElement|null} */
     this.video = null;

@@ -2,6 +2,7 @@
 
 import { api } from '../api.js';
 import { formatBytes } from '../format.js';
+import { fallbackTitle, needsPreparation, playerQualityNote, serverFallbackUrl } from './kinds.js';
 import { MediaWatcher } from './media.js';
 import { Html5PlayerAdapter } from './players/html5.js';
 import { YouTubePlayerAdapter } from './players/youtube.js';
@@ -25,6 +26,12 @@ const ROOM_PATH = /^\/watch\/([0-9A-HJKMNP-TV-Z]{12})\/?$/;
 const FATAL_JOIN = { ROOM_FULL: 'full', KICKED: 'kicked', ROOM_NOT_FOUND: 'not_found' };
 /** Tells the server a room file is still watched, so its idle cleanup does not remove it. */
 const KEEPALIVE_MS = 5 * 60_000;
+
+/** Player adapter per media kind; each loads its platform's script only when first used. */
+const ADAPTERS = {
+  youtube: YouTubePlayerAdapter,
+  file: Html5PlayerAdapter,
+};
 
 const $ = (id) => /** @type {any} */ (document.getElementById(id));
 
@@ -102,12 +109,12 @@ class WatchApp {
       },
       openSourceDialog: () => this.sourceDialog.open(),
       prepareOnServer: async () => {
-        const media = this.store.state.media;
-        if (media?.kind !== 'youtube') {
+        const url = serverFallbackUrl(this.store.state.media);
+        if (url === null) {
           return;
         }
-        // Embedding is disabled for this video: let our server prepare the file instead.
-        const { ticket } = await resolveSource(`https://www.youtube.com/watch?v=${media.ref}`, 'file');
+        // The platform refuses to play this video here: let our server prepare the file instead.
+        const { ticket } = await resolveSource(url, 'file');
         await this.setMedia(ticket);
       },
       unlockAutoplay: () => this.sync.unlockAutoplay(),
@@ -117,10 +124,7 @@ class WatchApp {
       request: (message) => this.request(message),
       send: (message) => this.session?.send(message) ?? false,
       mount: $('player-mount'),
-      createAdapter: (
-        kind,
-        mount,
-      ) => (kind === 'youtube' ? new YouTubePlayerAdapter(mount) : new Html5PlayerAdapter(mount)),
+      createAdapter: (kind, mount) => new (ADAPTERS[kind] ?? Html5PlayerAdapter)(mount),
       onChange: () => this.scheduleRender(),
       onError: (code) => this.toasts.show(roomErrorText(code), { kind: 'error' }),
     });
@@ -305,7 +309,7 @@ class WatchApp {
     return this.request({ type: 'media.set', ticket });
   }
 
-  // ---------- Quality (file mode, per member) ----------
+  // ---------- Quality (per member: server variants of a file, or the player's own levels) ----------
 
   /** @returns {import('./views/controls.js').QualityMenu|null} */
   qualityMenu() {
@@ -313,12 +317,11 @@ class WatchApp {
     if (media === null) {
       return null;
     }
-    if (media.kind === 'youtube') {
-      return {
-        current: null,
-        options: [],
-        note: 'У YouTube качество выбирает сам плеер — по скорости сети и размеру окна.',
-      };
+    if (!needsPreparation(media)) {
+      const own = this.sync.playerQualities();
+      return own === null
+        ? { current: null, options: [], note: playerQualityNote(media.kind) }
+        : { ...own, note: 'Меняется только у вас.' };
     }
     void this.loadVariants(media.ref);
     const list = this.variants?.ref === media.ref ? this.variants.list : null;
@@ -372,7 +375,11 @@ class WatchApp {
 
   async selectQuality(optionId) {
     const media = this.store.state.media;
-    if (media?.kind !== 'file') {
+    if (media !== null && !needsPreparation(media)) {
+      this.sync.setPlayerQuality(optionId);
+      return;
+    }
+    if (media === null) {
       return;
     }
     const label = this.variants?.list?.find((v) => v.optionId === optionId)?.label ?? optionId;
@@ -427,7 +434,7 @@ class WatchApp {
 
   keepAlive() {
     const ref = this.sync.currentRef();
-    if (this.store.state.media?.kind === 'file' && ref !== null && this.session !== null) {
+    if (needsPreparation(this.store.state.media) && ref !== null && this.session !== null) {
       void api('GET', `/api/watch/media/${ref}`, null, { timeoutMs: 10000 }).catch(() => {});
     }
   }
@@ -555,7 +562,7 @@ class WatchApp {
       return;
     }
     const media = state.media;
-    if (media?.kind === 'file') {
+    if (needsPreparation(media)) {
       this.media.watch(media.ref);
     } else {
       this.media.stop();
@@ -570,7 +577,7 @@ class WatchApp {
     this.player.render(state, this.preparation, this.sync.status.overlay);
     const title = media === null
       ? 'Видео ещё не выбрано'
-      : media.title ?? this.sync.status.title ?? (media.kind === 'youtube' ? 'Видео с YouTube' : 'Видео');
+      : media.title ?? this.sync.status.title ?? fallbackTitle(media);
     this.controls.render(state, this.sync.status, title);
 
     const count = participantsLabel(state.participants.length);
